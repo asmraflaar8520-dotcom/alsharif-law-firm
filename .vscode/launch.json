@@ -1,0 +1,29 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "chrome",
+      "request": "launch",
+      "name": "Launch Chrome (Wrangler Preview :3000)",
+      "url": "http://localhost:3000",
+      "webRoot": "${workspaceFolder}/public"
+    },
+    {
+      "type": "chrome",
+      "request": "launch",
+      "name": "Launch Chrome (Vite Dev :5173)",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Run Integration Tests (node --test)",
+      "program": "${workspaceFolder}/node_modules/vite/bin/vite.js",
+      "cwd": "${workspaceFolder}",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["test"],
+      "console": "integratedTerminal"
+    }
+  ]
+}
