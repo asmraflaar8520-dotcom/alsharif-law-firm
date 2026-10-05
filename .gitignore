@@ -32,3 +32,8 @@ lerna-debug.log*
 
 # misc
 .DS_Store
+
+.vercel
+
+*.db
+.local.db

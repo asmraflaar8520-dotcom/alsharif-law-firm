@@ -3,7 +3,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/build-vercel.js",
     "preview": "wrangler pages dev dist --d1=webapp-production --local --ip 0.0.0.0 --port 3000",
     "deploy": "npm run build && wrangler pages deploy dist",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
@@ -12,6 +12,9 @@
     "db:reset": "node -e \"const fs=require('fs');fs.rmSync('.wrangler/state/v3/d1',{recursive:true,force:true})\" && npm run db:migrate:local && npm run db:seed",
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   },
   "dependencies": {
     "hono": "^4.13.7"

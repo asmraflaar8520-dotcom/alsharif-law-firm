@@ -4,6 +4,7 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import { SCHEMA_SQL, SEED_SQL } from './embedded-data'
 
 let cachedAdapter: any = null
 
@@ -15,7 +16,13 @@ export function getFallbackD1(): any {
     const req = typeof require !== 'undefined' ? require : null
     if (!req) return null
     
-    const { DatabaseSync } = req('node:sqlite')
+    let DatabaseSync: any = null
+    try {
+      const sqlite = req('node:sqlite')
+      DatabaseSync = sqlite?.DatabaseSync
+    } catch {
+      return null
+    }
     if (!DatabaseSync) return null
 
     const dbPath = process.env.SQLITE_PATH || (process.platform === 'win32' ? path.join(process.cwd(), '.local.db') : '/tmp/sharif_law.db')
@@ -23,14 +30,8 @@ export function getFallbackD1(): any {
     const rawDb = new DatabaseSync(dbPath)
 
     if (isNew) {
-      const baseDir = process.cwd()
-      const m1Path = path.join(baseDir, 'migrations', '0001_initial_schema.sql')
-      const m2Path = path.join(baseDir, 'migrations', '0002_performance_indexes.sql')
-      const seedPath = path.join(baseDir, 'seed.sql')
-
-      if (fs.existsSync(m1Path)) rawDb.exec(fs.readFileSync(m1Path, 'utf8'))
-      if (fs.existsSync(m2Path)) rawDb.exec(fs.readFileSync(m2Path, 'utf8'))
-      if (fs.existsSync(seedPath)) rawDb.exec(fs.readFileSync(seedPath, 'utf8'))
+      if (SCHEMA_SQL) rawDb.exec(SCHEMA_SQL)
+      if (SEED_SQL) rawDb.exec(SEED_SQL)
     }
 
     class PreparedStatement {
