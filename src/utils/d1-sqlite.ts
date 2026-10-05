@@ -2,8 +2,6 @@
  * Fallback SQLite Database Adapter
  * Implements Cloudflare D1 interface on Node.js / Vercel using built-in node:sqlite
  */
-import fs from 'node:fs'
-import path from 'node:path'
 import { SCHEMA_SQL, SEED_SQL } from './embedded-data'
 
 let cachedAdapter: any = null
@@ -13,7 +11,7 @@ export function getFallbackD1(): any {
 
   try {
     // Dynamic native require to avoid bundler issues in Cloudflare workers
-    const req = typeof require !== 'undefined' ? require : null
+    const req = typeof (globalThis as any).require !== 'undefined' ? (globalThis as any).require : null
     if (!req) return null
     
     let DatabaseSync: any = null
@@ -25,14 +23,11 @@ export function getFallbackD1(): any {
     }
     if (!DatabaseSync) return null
 
-    const dbPath = process.env.SQLITE_PATH || (process.platform === 'win32' ? path.join(process.cwd(), '.local.db') : '/tmp/sharif_law.db')
-    const isNew = !fs.existsSync(dbPath)
+    const dbPath = (globalThis as any).process?.env?.SQLITE_PATH || ':memory:'
     const rawDb = new DatabaseSync(dbPath)
 
-    if (isNew) {
-      if (SCHEMA_SQL) rawDb.exec(SCHEMA_SQL)
-      if (SEED_SQL) rawDb.exec(SEED_SQL)
-    }
+    if (SCHEMA_SQL) rawDb.exec(SCHEMA_SQL)
+    if (SEED_SQL) rawDb.exec(SEED_SQL)
 
     class PreparedStatement {
       private db: any
