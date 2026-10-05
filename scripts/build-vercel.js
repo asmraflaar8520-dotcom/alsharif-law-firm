@@ -8,7 +8,7 @@ esbuild.buildSync({
   format: 'esm',
   outfile: 'api/index.js',
   banner: {
-    js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`
+    js: `import { createRequire } from 'module'; globalThis.require = createRequire(import.meta.url); const require = globalThis.require;`
   },
   external: ['node:sqlite']
 })

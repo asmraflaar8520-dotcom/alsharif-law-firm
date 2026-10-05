@@ -4,6 +4,8 @@
  */
 import { SCHEMA_SQL, SEED_SQL } from './embedded-data'
 
+declare const require: any
+
 let cachedAdapter: any = null
 
 export function getFallbackD1(): any {
@@ -11,7 +13,8 @@ export function getFallbackD1(): any {
 
   try {
     // Dynamic native require to avoid bundler issues in Cloudflare workers
-    const req = typeof (globalThis as any).require !== 'undefined' ? (globalThis as any).require : null
+    const g = globalThis as any
+    const req = g.require || (typeof require !== 'undefined' ? require : null)
     if (!req) return null
     
     let DatabaseSync: any = null

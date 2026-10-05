@@ -1,4 +1,10 @@
-import { createRequire } from 'module'; const require = createRequire(import.meta.url);
+import { createRequire } from 'module'; globalThis.require = createRequire(import.meta.url); const require = globalThis.require;
+var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+}) : x)(function(x) {
+  if (typeof require !== "undefined") return require.apply(this, arguments);
+  throw Error('Dynamic require of "' + x + '" is not supported');
+});
 
 // node_modules/@hono/node-server/dist/index.mjs
 import { Http2ServerRequest as Http2ServerRequest2, constants as h2constants } from "http2";
@@ -4689,7 +4695,8 @@ var cachedAdapter = null;
 function getFallbackD1() {
   if (cachedAdapter) return cachedAdapter;
   try {
-    const req = typeof globalThis.require !== "undefined" ? globalThis.require : null;
+    const g = globalThis;
+    const req = g.require || (typeof __require !== "undefined" ? __require : null);
     if (!req) return null;
     let DatabaseSync = null;
     try {
