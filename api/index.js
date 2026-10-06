@@ -5283,6 +5283,30 @@ app.use("/static/*", async (c, next) => {
   if (c.env?.ASSETS || c.env?.__STATIC_CONTENT) {
     return module({ root: "./public" })(c, next);
   }
+  try {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const rel = c.req.path.replace(/^\/static\//, "");
+    const file = path.resolve(process.cwd(), "public", "static", rel);
+    if (fs.existsSync(file) && fs.statSync(file).isFile()) {
+      const ext = path.extname(file).toLowerCase();
+      const mimes = {
+        ".css": "text/css; charset=utf-8",
+        ".js": "application/javascript; charset=utf-8",
+        ".json": "application/json; charset=utf-8",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".svg": "image/svg+xml",
+        ".ico": "image/x-icon"
+      };
+      const data = fs.readFileSync(file);
+      return new Response(data, {
+        headers: { "Content-Type": mimes[ext] || "application/octet-stream" }
+      });
+    }
+  } catch {
+  }
   await next();
 });
 app.route("/api", authRoutes);

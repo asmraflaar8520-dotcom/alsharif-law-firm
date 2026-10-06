@@ -170,16 +170,17 @@ function shell(content) {
             <span>${n.label}</span>
           </button>`).join('')}
       </nav>
-      <div class="px-4 py-4 border-t border-gold-500/20">
-        <div class="flex items-center gap-3">
-          ${avatar(u, 40)}
-          <div class="min-w-0">
-            <div class="text-sm font-semibold truncate">${esc(u.name)}</div>
-            <div class="text-[11px] text-gold-400/80 truncate">${esc(u.title || ROLE[u.role])}</div>
+      <div class="sidebar-user-card px-3.5 py-3.5 mt-auto shrink-0">
+        <div class="sidebar-user-badge flex items-center gap-3">
+          ${avatar(u, 42)}
+          <div class="min-w-0 flex-1">
+            <div class="text-[13.5px] font-bold text-ivory truncate">${esc(u.name)}</div>
+            <div class="text-[11px] text-gold-400/90 truncate">${esc(u.title || ROLE[u.role])}</div>
           </div>
         </div>
-        <button id="logout-btn" class="mt-3 w-full text-[12px] text-ivory/60 hover:text-gold-400 text-right">
-          <i class="fas fa-right-from-bracket ml-1"></i> تسجيل الخروج
+        <button id="logout-btn" class="mt-2.5 w-full text-[12px] text-ivory/70 hover:text-gold-300 transition-colors text-right flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-gold-500/10">
+          <span><i class="fas fa-right-from-bracket ml-1.5 text-gold-400/80"></i> تسجيل الخروج</span>
+          <span class="text-[10px] text-ivory/40">خروج</span>
         </button>
       </div>
     </aside>

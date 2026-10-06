@@ -47,6 +47,30 @@ app.use('/static/*', async (c, next) => {
   if ((c.env as any)?.ASSETS || (c.env as any)?.__STATIC_CONTENT) {
     return serveStatic({ root: './public' })(c, next)
   }
+  // Node.js fallback (Vercel serverless / local Node)
+  try {
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const rel = c.req.path.replace(/^\/static\//, '')
+    const file = path.resolve(process.cwd(), 'public', 'static', rel)
+    if (fs.existsSync(file) && fs.statSync(file).isFile()) {
+      const ext = path.extname(file).toLowerCase()
+      const mimes: Record<string, string> = {
+        '.css': 'text/css; charset=utf-8',
+        '.js': 'application/javascript; charset=utf-8',
+        '.json': 'application/json; charset=utf-8',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.svg': 'image/svg+xml',
+        '.ico': 'image/x-icon'
+      }
+      const data = fs.readFileSync(file)
+      return new Response(data, {
+        headers: { 'Content-Type': mimes[ext] || 'application/octet-stream' }
+      })
+    }
+  } catch {}
   await next()
 })
 
