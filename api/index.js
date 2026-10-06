@@ -3452,6 +3452,16 @@ async function verifyPassword(password, stored) {
   }
   return diff === 0;
 }
+function generateRandomPassword(length = 16) {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  let result = "";
+  for (let i = 0; i < length; i++) {
+    result += chars[bytes[i] % chars.length];
+  }
+  return result;
+}
 
 // src/utils/logger.ts
 async function logActivity(db, userId, entityType, entityId, action, detail) {
@@ -3463,6 +3473,69 @@ async function logActivity(db, userId, entityType, entityId, action, detail) {
     console.error("Failed to log activity:", err);
   }
 }
+
+// src/services/auth.service.ts
+var AuthService = class {
+  /**
+   * Authenticates user credentials using PBKDF2 verification.
+   * Manages single-session policy and expired session cleanup.
+   */
+  static async login(db, { email, password, ip = "local" }) {
+    const cleanEmail = String(email).trim().toLowerCase();
+    const user = await db.prepare(
+      `SELECT * FROM users WHERE email = ? AND is_active = 1`
+    ).bind(cleanEmail).first();
+    if (!user) {
+      throw new Error("\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062F\u062E\u0648\u0644 \u063A\u064A\u0631 \u0635\u062D\u064A\u062D\u0629");
+    }
+    const valid = await verifyPassword(String(password), user.password_hash);
+    if (!valid) {
+      await logActivity(db, null, "auth", user.id, "\u0641\u0634\u0644_\u062F\u062E\u0648\u0644", `\u0645\u062D\u0627\u0648\u0644\u0629 \u062F\u062E\u0648\u0644 \u0641\u0627\u0634\u0644\u0629 \u0645\u0646 ${ip}`);
+      throw new Error("\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062F\u062E\u0648\u0644 \u063A\u064A\u0631 \u0635\u062D\u064A\u062D\u0629");
+    }
+    await db.prepare(`DELETE FROM sessions WHERE user_id = ?`).bind(user.id).run().catch(() => {
+    });
+    await db.prepare(`DELETE FROM sessions WHERE expires_at < datetime('now')`).run().catch(() => {
+    });
+    const sessionToken = generateToken();
+    const expiresAt = new Date(Date.now() + SESSION_DURATION_MS).toISOString().slice(0, 19).replace("T", " ");
+    await db.prepare(
+      `INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)`
+    ).bind(sessionToken, user.id, expiresAt).run();
+    await logActivity(db, user.id, "auth", user.id, "\u062F\u062E\u0648\u0644", "\u062A\u0633\u062C\u064A\u0644 \u062F\u062E\u0648\u0644 \u0625\u0644\u0649 \u0627\u0644\u0646\u0638\u0627\u0645");
+    return {
+      user: safeUser(user),
+      sessionToken,
+      expiresAt
+    };
+  }
+  /**
+   * Terminates active session token
+   */
+  static async logout(db, token) {
+    if (token) {
+      await db.prepare(`DELETE FROM sessions WHERE token = ?`).bind(token).run();
+    }
+  }
+  /**
+   * Resolves user by session token
+   */
+  static async getUserFromToken(db, token) {
+    if (!token) return null;
+    const user = await db.prepare(
+      `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
+       WHERE s.token = ? AND s.expires_at > datetime('now') AND u.is_active = 1`
+    ).bind(token).first();
+    return user || null;
+  }
+  /**
+   * Cleans up expired sessions
+   */
+  static async pruneExpiredSessions(db) {
+    const res = await db.prepare(`DELETE FROM sessions WHERE expires_at < datetime('now')`).run();
+    return res.meta?.changes || 0;
+  }
+};
 
 // src/routes/auth.ts
 var authRoutes = new Hono2();
@@ -3476,42 +3549,25 @@ authRoutes.post("/login", async (c) => {
   if (!email || !password) {
     return c.json({ error: "\u0627\u0644\u0628\u0631\u064A\u062F \u0648\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u0645\u0637\u0644\u0648\u0628\u0627\u0646" }, 400);
   }
-  const cleanEmail = String(email).trim().toLowerCase();
-  const user = await c.env.DB.prepare(
-    `SELECT * FROM users WHERE email = ? AND is_active = 1`
-  ).bind(cleanEmail).first();
-  if (!user) {
-    return c.json({ error: "\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062F\u062E\u0648\u0644 \u063A\u064A\u0631 \u0635\u062D\u064A\u062D\u0629" }, 401);
+  try {
+    const result = await AuthService.login(c.env.DB, { email, password, ip });
+    const isHttps = c.req.url.startsWith("https://") || c.req.header("x-forwarded-proto") === "https";
+    setCookie(c, SESSION_COOKIE_NAME, result.sessionToken, {
+      path: "/",
+      httpOnly: true,
+      sameSite: "Lax",
+      secure: isHttps,
+      maxAge: SESSION_DURATION_DAYS * 86400
+    });
+    return c.json({ user: result.user });
+  } catch (err) {
+    return c.json({ error: err.message || "\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062F\u062E\u0648\u0644 \u063A\u064A\u0631 \u0635\u062D\u064A\u062D\u0629" }, 401);
   }
-  const valid = await verifyPassword(String(password), user.password_hash);
-  if (!valid) {
-    await logActivity(c.env.DB, null, "auth", user.id, "\u0641\u0634\u0644_\u062F\u062E\u0648\u0644", `\u0645\u062D\u0627\u0648\u0644\u0629 \u062F\u062E\u0648\u0644 \u0641\u0627\u0634\u0644\u0629 \u0645\u0646 ${ip}`);
-    return c.json({ error: "\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062F\u062E\u0648\u0644 \u063A\u064A\u0631 \u0635\u062D\u064A\u062D\u0629" }, 401);
-  }
-  await c.env.DB.prepare(`DELETE FROM sessions WHERE user_id = ?`).bind(user.id).run().catch(() => {
-  });
-  await c.env.DB.prepare(`DELETE FROM sessions WHERE expires_at < datetime('now')`).run().catch(() => {
-  });
-  const sessionToken = generateToken();
-  const expiresAt = new Date(Date.now() + SESSION_DURATION_MS).toISOString().slice(0, 19).replace("T", " ");
-  await c.env.DB.prepare(
-    `INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)`
-  ).bind(sessionToken, user.id, expiresAt).run();
-  const isHttps = c.req.url.startsWith("https://") || c.req.header("x-forwarded-proto") === "https";
-  setCookie(c, SESSION_COOKIE_NAME, sessionToken, {
-    path: "/",
-    httpOnly: true,
-    sameSite: "Lax",
-    secure: isHttps,
-    maxAge: SESSION_DURATION_DAYS * 86400
-  });
-  await logActivity(c.env.DB, user.id, "auth", user.id, "\u062F\u062E\u0648\u0644", "\u062A\u0633\u062C\u064A\u0644 \u062F\u062E\u0648\u0644 \u0625\u0644\u0649 \u0627\u0644\u0646\u0638\u0627\u0645");
-  return c.json({ user: safeUser(user) });
 });
 authRoutes.post("/logout", async (c) => {
   const token = getCookie(c, SESSION_COOKIE_NAME);
   if (token) {
-    await c.env.DB.prepare(`DELETE FROM sessions WHERE token = ?`).bind(token).run();
+    await AuthService.logout(c.env.DB, token);
   }
   deleteCookie(c, SESSION_COOKIE_NAME, { path: "/" });
   return c.json({ ok: true });
@@ -3539,1111 +3595,1550 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
 }
 
+// src/services/dashboard.service.ts
+var DashboardService = class {
+  /**
+   * High-performance aggregated KPIs, agenda, and workload metrics.
+   */
+  static async getDashboardMetrics(db, user) {
+    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    const [
+      casesRow,
+      hearingsToday,
+      openTasks,
+      invoiceStats,
+      monthPaid,
+      byStatus,
+      byType,
+      upcomingHearings,
+      recentAct,
+      teamLoad,
+      expiringPoa,
+      monthExp
+    ] = await Promise.all([
+      db.prepare(`SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status IN ('\u0645\u062A\u062F\u0627\u0648\u0644\u0629','\u0645\u062D\u062C\u0648\u0632\u0629 \u0644\u0644\u062D\u0643\u0645','\u0645\u0648\u0642\u0648\u0641\u0629') THEN 1 ELSE 0 END) AS open,
+        SUM(CASE WHEN status = '\u0645\u0646\u062A\u0647\u064A\u0629' THEN 1 ELSE 0 END) AS closed,
+        SUM(CASE WHEN priority IN ('\u0639\u0627\u062C\u0644\u0629','\u0639\u0627\u0644\u064A\u0629') AND status != '\u0645\u0646\u062A\u0647\u064A\u0629' THEN 1 ELSE 0 END) AS urgent
+        FROM cases`).first(),
+      db.prepare(`SELECT COUNT(*) AS n FROM hearings WHERE hearing_date = ? AND status = '\u0642\u0627\u062F\u0645\u0629'`).bind(today).first(),
+      db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE status IN ('\u0645\u0641\u062A\u0648\u062D\u0629','\u062C\u0627\u0631\u064A\u0629')`).first(),
+      db.prepare(`SELECT
+        COUNT(CASE WHEN status IN ('\u0635\u0627\u062F\u0631\u0629','\u062C\u0632\u0626\u064A','\u0645\u062A\u0623\u062E\u0631\u0629') AND due_date IS NOT NULL AND due_date < date('now') THEN 1 END) AS overdue_count,
+        COALESCE(SUM(CASE WHEN status IN ('\u0635\u0627\u062F\u0631\u0629','\u062C\u0632\u0626\u064A','\u0645\u062A\u0623\u062E\u0631\u0629') AND due_date IS NOT NULL AND due_date < date('now') THEN total-paid ELSE 0 END), 0) AS overdue_amount,
+        COALESCE(SUM(CASE WHEN status IN ('\u0635\u0627\u062F\u0631\u0629','\u062C\u0632\u0626\u064A','\u0645\u062A\u0623\u062E\u0631\u0629') THEN total-paid ELSE 0 END), 0) AS outstanding_amount,
+        COALESCE(SUM(CASE WHEN issue_date >= date('now','start of month') AND status != '\u0645\u0644\u063A\u0627\u0629' THEN total ELSE 0 END), 0) AS month_invoiced
+        FROM invoices`).first(),
+      db.prepare(`SELECT COALESCE(SUM(amount),0) AS n FROM payments WHERE paid_at >= date('now','start of month')`).first(),
+      db.prepare(`SELECT status, COUNT(*) AS n FROM cases GROUP BY status`).all(),
+      db.prepare(`SELECT ct.category AS name, COUNT(*) AS n FROM cases c LEFT JOIN case_types ct ON ct.id = c.case_type_id WHERE c.status != '\u0645\u0646\u062A\u0647\u064A\u0629' GROUP BY ct.category`).all(),
+      db.prepare(`SELECT h.*, cs.case_no, cs.year, cs.title AS case_title, cl.name AS client_name, u.name AS lawyer_name, co.name AS court_name
+        FROM hearings h
+        JOIN cases cs ON cs.id = h.case_id
+        JOIN clients cl ON cl.id = cs.client_id
+        LEFT JOIN users u ON u.id = h.lawyer_id
+        LEFT JOIN courts co ON co.id = h.court_id
+        WHERE h.hearing_date >= date('now') AND h.status IN ('\u0642\u0627\u062F\u0645\u0629','\u062D\u062C\u0632 \u0644\u0644\u062D\u0643\u0645')
+        ORDER BY h.hearing_date, h.hearing_time LIMIT 10`).all(),
+      db.prepare(`SELECT a.*, u.name AS user_name, u.initials, u.color FROM activities a LEFT JOIN users u ON u.id = a.user_id ORDER BY a.created_at DESC LIMIT 8`).all(),
+      db.prepare(`SELECT u.id, u.name, u.initials, u.color, u.role, u.title,
+        (SELECT COUNT(*) FROM cases WHERE lead_lawyer_id = u.id AND status != '\u0645\u0646\u062A\u0647\u064A\u0629') AS open_cases,
+        (SELECT COUNT(*) FROM tasks WHERE assignee_id = u.id AND status IN ('\u0645\u0641\u062A\u0648\u062D\u0629','\u062C\u0627\u0631\u064A\u0629')) AS open_tasks
+        FROM users u WHERE u.is_active = 1 AND u.role NOT IN ('accountant','secretary') ORDER BY open_cases DESC LIMIT 6`).all(),
+      db.prepare(`SELECT p.*, cl.name AS client_name FROM powers_of_attorney p JOIN clients cl ON cl.id = p.client_id
+        WHERE p.status = '\u0633\u0627\u0631\u064A' AND p.expiry_date IS NOT NULL AND p.expiry_date <= date('now','+45 days')
+        ORDER BY p.expiry_date LIMIT 6`).all(),
+      db.prepare(`SELECT COALESCE(SUM(amount),0) AS n FROM expenses WHERE expense_date >= date('now','start of month')`).first()
+    ]);
+    return {
+      kpis: {
+        open_cases: casesRow?.open || 0,
+        total_cases: casesRow?.total || 0,
+        closed_cases: casesRow?.closed || 0,
+        urgent_cases: casesRow?.urgent || 0,
+        hearings_today: hearingsToday?.n || 0,
+        open_tasks: openTasks?.n || 0,
+        overdue_invoices: invoiceStats?.overdue_count || 0,
+        overdue_amount: invoiceStats?.overdue_amount || 0,
+        month_collected: monthPaid?.n || 0,
+        month_invoiced: invoiceStats?.month_invoiced || 0,
+        outstanding: invoiceStats?.outstanding_amount || 0,
+        overdue: invoiceStats?.overdue_amount || 0,
+        month_expenses: monthExp?.n || 0
+      },
+      by_status: byStatus.results || [],
+      by_type: byType.results || [],
+      upcoming_hearings: upcomingHearings.results || [],
+      activity: recentAct.results || [],
+      team: teamLoad.results || [],
+      expiring_poa: expiringPoa.results || [],
+      me: safeUser(user)
+    };
+  }
+  /**
+   * Returns lookup dictionaries (courts, case types, users, clients, cases)
+   */
+  static async getLookups(db) {
+    const [courts, types, users, clients, cases] = await Promise.all([
+      db.prepare(`SELECT * FROM courts ORDER BY name`).all(),
+      db.prepare(`SELECT * FROM case_types ORDER BY category, name`).all(),
+      db.prepare(`SELECT id, name, title, role, initials, color, department FROM users WHERE is_active = 1 ORDER BY name`).all(),
+      db.prepare(`SELECT id, name, type, status FROM clients ORDER BY name`).all(),
+      db.prepare(`SELECT id, case_no, year, title FROM cases ORDER BY id DESC LIMIT 200`).all()
+    ]);
+    return {
+      courts: courts.results || [],
+      case_types: types.results || [],
+      users: users.results || [],
+      clients: clients.results || [],
+      cases: cases.results || []
+    };
+  }
+  /**
+   * Fast global search across cases, clients, and powers of attorney
+   */
+  static async globalSearch(db, rawQuery) {
+    const q = (rawQuery || "").trim();
+    if (q.length < 2) {
+      return { cases: [], clients: [], poas: [] };
+    }
+    const like = `%${escapeLike(q)}%`;
+    const [cases, clients, poas] = await Promise.all([
+      db.prepare(`SELECT c.id, c.case_no, c.year, c.title, c.status, cl.name AS client_name
+        FROM cases c JOIN clients cl ON cl.id = c.client_id
+        WHERE c.title LIKE ? ESCAPE '\\' OR c.case_no LIKE ? ESCAPE '\\' OR cl.name LIKE ? ESCAPE '\\' OR c.opposing_name LIKE ? ESCAPE '\\' LIMIT 8`).bind(like, like, like, like).all(),
+      db.prepare(`SELECT id, name, type, phone, city FROM clients WHERE name LIKE ? ESCAPE '\\' OR national_id LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\' LIMIT 6`).bind(like, like, like).all(),
+      db.prepare(`SELECT p.id, p.poa_no, p.type, cl.name AS client_name FROM powers_of_attorney p JOIN clients cl ON cl.id = p.client_id WHERE p.poa_no LIKE ? ESCAPE '\\' OR cl.name LIKE ? ESCAPE '\\' LIMIT 4`).bind(like, like).all()
+    ]);
+    return {
+      cases: cases.results || [],
+      clients: clients.results || [],
+      poas: poas.results || []
+    };
+  }
+};
+
 // src/routes/dashboard.ts
 var dashboardRoutes = new Hono2();
 dashboardRoutes.get("/dashboard", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const db = c.env.DB;
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const [
-    casesRow,
-    hearingsToday,
-    openTasks,
-    invoiceStats,
-    monthPaid,
-    byStatus,
-    byType,
-    upcomingHearings,
-    recentAct,
-    teamLoad,
-    expiringPoa,
-    monthExp
-  ] = await Promise.all([
-    db.prepare(`SELECT
-      COUNT(*) AS total,
-      SUM(CASE WHEN status IN ('\u0645\u062A\u062F\u0627\u0648\u0644\u0629','\u0645\u062D\u062C\u0648\u0632\u0629 \u0644\u0644\u062D\u0643\u0645','\u0645\u0648\u0642\u0648\u0641\u0629') THEN 1 ELSE 0 END) AS open,
-      SUM(CASE WHEN status = '\u0645\u0646\u062A\u0647\u064A\u0629' THEN 1 ELSE 0 END) AS closed,
-      SUM(CASE WHEN priority IN ('\u0639\u0627\u062C\u0644\u0629','\u0639\u0627\u0644\u064A\u0629') AND status != '\u0645\u0646\u062A\u0647\u064A\u0629' THEN 1 ELSE 0 END) AS urgent
-      FROM cases`).first(),
-    db.prepare(`SELECT COUNT(*) AS n FROM hearings WHERE hearing_date = ? AND status = '\u0642\u0627\u062F\u0645\u0629'`).bind(today).first(),
-    db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE status IN ('\u0645\u0641\u062A\u0648\u062D\u0629','\u062C\u0627\u0631\u064A\u0629')`).first(),
-    // Combined single-pass aggregation over invoices: replaces 3 separate scans
-    db.prepare(`SELECT
-      COUNT(CASE WHEN status IN ('\u0635\u0627\u062F\u0631\u0629','\u062C\u0632\u0626\u064A','\u0645\u062A\u0623\u062E\u0631\u0629') AND due_date IS NOT NULL AND due_date < date('now') THEN 1 END) AS overdue_count,
-      COALESCE(SUM(CASE WHEN status IN ('\u0635\u0627\u062F\u0631\u0629','\u062C\u0632\u0626\u064A','\u0645\u062A\u0623\u062E\u0631\u0629') AND due_date IS NOT NULL AND due_date < date('now') THEN total-paid ELSE 0 END), 0) AS overdue_amount,
-      COALESCE(SUM(CASE WHEN status IN ('\u0635\u0627\u062F\u0631\u0629','\u062C\u0632\u0626\u064A','\u0645\u062A\u0623\u062E\u0631\u0629') THEN total-paid ELSE 0 END), 0) AS outstanding_amount,
-      COALESCE(SUM(CASE WHEN issue_date >= date('now','start of month') AND status != '\u0645\u0644\u063A\u0627\u0629' THEN total ELSE 0 END), 0) AS month_invoiced
-      FROM invoices`).first(),
-    db.prepare(`SELECT COALESCE(SUM(amount),0) AS n FROM payments WHERE paid_at >= date('now','start of month')`).first(),
-    db.prepare(`SELECT status, COUNT(*) AS n FROM cases GROUP BY status`).all(),
-    db.prepare(`SELECT ct.category AS name, COUNT(*) AS n FROM cases c LEFT JOIN case_types ct ON ct.id = c.case_type_id WHERE c.status != '\u0645\u0646\u062A\u0647\u064A\u0629' GROUP BY ct.category`).all(),
-    db.prepare(`SELECT h.*, cs.case_no, cs.year, cs.title AS case_title, cl.name AS client_name, u.name AS lawyer_name, co.name AS court_name
-      FROM hearings h
-      JOIN cases cs ON cs.id = h.case_id
-      JOIN clients cl ON cl.id = cs.client_id
-      LEFT JOIN users u ON u.id = h.lawyer_id
-      LEFT JOIN courts co ON co.id = h.court_id
-      WHERE h.hearing_date >= date('now') AND h.status IN ('\u0642\u0627\u062F\u0645\u0629','\u062D\u062C\u0632 \u0644\u0644\u062D\u0643\u0645')
-      ORDER BY h.hearing_date, h.hearing_time LIMIT 10`).all(),
-    db.prepare(`SELECT a.*, u.name AS user_name, u.initials, u.color FROM activities a LEFT JOIN users u ON u.id = a.user_id ORDER BY a.created_at DESC LIMIT 8`).all(),
-    db.prepare(`SELECT u.id, u.name, u.initials, u.color, u.role, u.title,
-      (SELECT COUNT(*) FROM cases WHERE lead_lawyer_id = u.id AND status != '\u0645\u0646\u062A\u0647\u064A\u0629') AS open_cases,
-      (SELECT COUNT(*) FROM tasks WHERE assignee_id = u.id AND status IN ('\u0645\u0641\u062A\u0648\u062D\u0629','\u062C\u0627\u0631\u064A\u0629')) AS open_tasks
-      FROM users u WHERE u.is_active = 1 AND u.role NOT IN ('accountant','secretary') ORDER BY open_cases DESC LIMIT 6`).all(),
-    db.prepare(`SELECT p.*, cl.name AS client_name FROM powers_of_attorney p JOIN clients cl ON cl.id = p.client_id
-      WHERE p.status = '\u0633\u0627\u0631\u064A' AND p.expiry_date IS NOT NULL AND p.expiry_date <= date('now','+45 days')
-      ORDER BY p.expiry_date LIMIT 6`).all(),
-    db.prepare(`SELECT COALESCE(SUM(amount),0) AS n FROM expenses WHERE expense_date >= date('now','start of month')`).first()
-  ]);
-  return c.json({
-    kpis: {
-      open_cases: casesRow?.open || 0,
-      total_cases: casesRow?.total || 0,
-      closed_cases: casesRow?.closed || 0,
-      urgent_cases: casesRow?.urgent || 0,
-      hearings_today: hearingsToday?.n || 0,
-      open_tasks: openTasks?.n || 0,
-      overdue_invoices: invoiceStats?.overdue_count || 0,
-      overdue_amount: invoiceStats?.overdue_amount || 0,
-      month_collected: monthPaid?.n || 0,
-      month_invoiced: invoiceStats?.month_invoiced || 0,
-      outstanding: invoiceStats?.outstanding_amount || 0,
-      overdue: invoiceStats?.overdue_amount || 0,
-      month_expenses: monthExp?.n || 0
-    },
-    by_status: byStatus.results || [],
-    by_type: byType.results || [],
-    upcoming_hearings: upcomingHearings.results || [],
-    activity: recentAct.results || [],
-    team: teamLoad.results || [],
-    expiring_poa: expiringPoa.results || [],
-    me: safeUser(user)
-  });
+  const data = await DashboardService.getDashboardMetrics(c.env.DB, user);
+  return c.json(data);
 });
 dashboardRoutes.get("/lookups", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const [courts, types, users, clients, cases] = await Promise.all([
-    c.env.DB.prepare(`SELECT * FROM courts ORDER BY name`).all(),
-    c.env.DB.prepare(`SELECT * FROM case_types ORDER BY category, name`).all(),
-    c.env.DB.prepare(`SELECT id, name, title, role, initials, color, department FROM users WHERE is_active = 1 ORDER BY name`).all(),
-    c.env.DB.prepare(`SELECT id, name, type, status FROM clients ORDER BY name`).all(),
-    c.env.DB.prepare(`SELECT id, case_no, year, title FROM cases ORDER BY id DESC LIMIT 200`).all()
-  ]);
-  return c.json({
-    courts: courts.results || [],
-    case_types: types.results || [],
-    users: users.results || [],
-    clients: clients.results || [],
-    cases: cases.results || []
-  });
+  const lookups = await DashboardService.getLookups(c.env.DB);
+  return c.json(lookups);
 });
 dashboardRoutes.get("/search", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const q = (c.req.query("q") || "").trim();
-  if (q.length < 2) {
-    return c.json({ cases: [], clients: [], poas: [] });
-  }
-  const like = `%${escapeLike(q)}%`;
-  const [cases, clients, poas] = await Promise.all([
-    c.env.DB.prepare(`SELECT c.id, c.case_no, c.year, c.title, c.status, cl.name AS client_name
-      FROM cases c JOIN clients cl ON cl.id = c.client_id
-      WHERE c.title LIKE ? ESCAPE '\\' OR c.case_no LIKE ? ESCAPE '\\' OR cl.name LIKE ? ESCAPE '\\' OR c.opposing_name LIKE ? ESCAPE '\\' LIMIT 8`).bind(like, like, like, like).all(),
-    c.env.DB.prepare(`SELECT id, name, type, phone, city FROM clients WHERE name LIKE ? ESCAPE '\\' OR national_id LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\' LIMIT 6`).bind(like, like, like).all(),
-    c.env.DB.prepare(`SELECT p.id, p.poa_no, p.type, cl.name AS client_name FROM powers_of_attorney p JOIN clients cl ON cl.id = p.client_id WHERE p.poa_no LIKE ? ESCAPE '\\' OR cl.name LIKE ? ESCAPE '\\' LIMIT 4`).bind(like, like).all()
-  ]);
-  return c.json({
-    cases: cases.results || [],
-    clients: clients.results || [],
-    poas: poas.results || []
-  });
+  const results = await DashboardService.globalSearch(c.env.DB, c.req.query("q") || "");
+  return c.json(results);
 });
+
+// src/services/users.service.ts
+var UsersService = class {
+  /**
+   * Lists firm team members sorted by hierarchy and name
+   */
+  static async getUsers(db) {
+    const { results } = await db.prepare(
+      `SELECT id, name, title, email, phone, role, department, bar_number, bar_year, hourly_rate, bio, initials, color, is_active, created_at
+       FROM users ORDER BY
+        CASE role WHEN 'managing_partner' THEN 1 WHEN 'partner' THEN 2 WHEN 'senior' THEN 3 WHEN 'lawyer' THEN 4 WHEN 'intern' THEN 5 ELSE 6 END, name`
+    ).all();
+    return results || [];
+  }
+  /**
+   * Retrieves user profile, assigned open cases, and workload hours
+   */
+  static async getUserProfile(db, id) {
+    const user = await db.prepare(
+      `SELECT id, name, title, email, phone, role, department, bar_number, bar_year, hourly_rate, bio, initials, color, is_active
+       FROM users WHERE id = ?`
+    ).bind(id).first();
+    if (!user) return null;
+    const [cases, hours, tasks] = await Promise.all([
+      db.prepare(
+        `SELECT c.*, cl.name AS client_name FROM cases c JOIN clients cl ON cl.id = c.client_id
+         WHERE c.lead_lawyer_id = ? ORDER BY c.updated_at DESC LIMIT 50`
+      ).bind(id).all(),
+      db.prepare(
+        `SELECT COALESCE(SUM(hours),0) AS n FROM time_entries WHERE user_id = ? AND work_date >= date('now','start of month')`
+      ).bind(id).first(),
+      db.prepare(
+        `SELECT COUNT(*) AS n FROM tasks WHERE assignee_id = ? AND status IN ('\u0645\u0641\u062A\u0648\u062D\u0629','\u062C\u0627\u0631\u064A\u0629')`
+      ).bind(id).first()
+    ]);
+    return {
+      ...user,
+      cases: cases.results || [],
+      month_hours: hours?.n || 0,
+      open_tasks: tasks?.n || 0
+    };
+  }
+  /**
+   * Creates a new user account with hashed password
+   */
+  static async createUser(db, data, currentUserId) {
+    const name = cleanString(data.name, MAX_NAME_LENGTH);
+    const email = cleanString(data.email, 254);
+    if (!name || !email) {
+      throw new Error("\u0627\u0644\u0627\u0633\u0645 \u0648\u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A \u0645\u0637\u0644\u0648\u0628\u0627\u0646");
+    }
+    if (!isValidEmail(email)) {
+      throw new Error("\u0635\u064A\u063A\u0629 \u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A \u063A\u064A\u0631 \u0635\u062D\u064A\u062D\u0629");
+    }
+    const cleanEmail = email.toLowerCase();
+    const existing = await db.prepare(`SELECT id FROM users WHERE email = ?`).bind(cleanEmail).first();
+    if (existing) {
+      throw new Error("\u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A \u0645\u0633\u062C\u0644 \u0628\u0627\u0644\u0641\u0639\u0644");
+    }
+    const role = data.role && isAllowed(data.role, [...ALLOWED_ROLES]) ? data.role : "lawyer";
+    const rawPassword = data.password || generateRandomPassword(16);
+    const hash = await hashPassword(rawPassword);
+    const result = await db.prepare(
+      `INSERT INTO users (name, title, email, phone, password_hash, role, department, bar_number, bar_year, hourly_rate, bio, initials, color)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      name,
+      cleanString(data.title, MAX_TEXT_LENGTH),
+      cleanEmail,
+      cleanString(data.phone, 30),
+      hash,
+      role,
+      cleanString(data.department, MAX_TEXT_LENGTH),
+      cleanString(data.bar_number, 50),
+      data.bar_year ? Number(data.bar_year) : null,
+      Number(data.hourly_rate || 0),
+      cleanString(data.bio, MAX_TEXT_LENGTH),
+      cleanString(data.initials, 5) || name.slice(0, 2),
+      data.color || "#1F4E79"
+    ).run();
+    const id = result.meta.last_row_id;
+    await logActivity(db, currentUserId, "user", id, "\u0625\u0646\u0634\u0627\u0621", `\u0645\u0633\u062A\u062E\u062F\u0645 \u062C\u062F\u064A\u062F: ${name}`);
+    return id;
+  }
+  /**
+   * Updates user details with role-based field restrictions
+   */
+  static async updateUser(db, targetId, data, currentUser) {
+    const isSelf = currentUser.id === Number(targetId);
+    const isPrivileged = ["managing_partner", "partner", "admin"].includes(currentUser.role);
+    if (!isSelf && !isPrivileged) {
+      throw new Error("\u063A\u064A\u0631 \u0645\u0635\u0631\u062D \u0628\u062A\u0639\u062F\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0647\u0630\u0627 \u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645");
+    }
+    const existing = await db.prepare(
+      `SELECT id, name, title, email, phone, role, department, bar_number, bar_year, hourly_rate, bio, initials, color, is_active FROM users WHERE id = ?`
+    ).bind(targetId).first();
+    if (!existing) {
+      throw new Error("\u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F");
+    }
+    const name = data.name !== void 0 ? cleanString(data.name, MAX_NAME_LENGTH) || existing.name : existing.name;
+    const title = data.title !== void 0 ? cleanString(data.title, MAX_TEXT_LENGTH) : existing.title;
+    const phone = data.phone !== void 0 ? cleanString(data.phone, 30) : existing.phone;
+    const bio = data.bio !== void 0 ? cleanString(data.bio, MAX_TEXT_LENGTH) : existing.bio;
+    const initials = data.initials !== void 0 ? cleanString(data.initials, 5) : existing.initials;
+    const color = data.color !== void 0 ? data.color : existing.color;
+    const department = data.department !== void 0 ? cleanString(data.department, MAX_TEXT_LENGTH) : existing.department;
+    const bar_number = data.bar_number !== void 0 ? cleanString(data.bar_number, 50) : existing.bar_number;
+    const bar_year = data.bar_year !== void 0 ? data.bar_year ? Number(data.bar_year) : null : existing.bar_year;
+    const role = isPrivileged && data.role !== void 0 && isAllowed(data.role, [...ALLOWED_ROLES]) ? data.role : existing.role;
+    const is_active = isPrivileged && data.is_active !== void 0 ? Number(data.is_active) : existing.is_active;
+    const hourly_rate = isPrivileged && data.hourly_rate !== void 0 ? Number(data.hourly_rate) : existing.hourly_rate;
+    const email = isPrivileged && data.email !== void 0 ? String(data.email).trim().toLowerCase() : existing.email;
+    await db.prepare(
+      `UPDATE users SET name=?, title=?, email=?, phone=?, role=?, department=?, bar_number=?, bar_year=?, hourly_rate=?, bio=?, initials=?, color=?, is_active=? WHERE id=?`
+    ).bind(name, title, email, phone, role, department, bar_number, bar_year, hourly_rate, bio, initials, color, is_active, targetId).run();
+    if (data.password) {
+      if (typeof data.password !== "string" || data.password.length < 6) {
+        throw new Error("\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u064A\u062C\u0628 \u0623\u0644\u0627 \u062A\u0642\u0644 \u0639\u0646 6 \u0623\u062D\u0631\u0641");
+      }
+      if (!isPrivileged) {
+        if (!data.current_password) {
+          throw new Error("\u064A\u0631\u062C\u0649 \u0625\u062F\u062E\u0627\u0644 \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u0627\u0644\u062D\u0627\u0644\u064A\u0629 \u0644\u062A\u063A\u064A\u064A\u0631 \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631");
+        }
+        const fullUser = await db.prepare(`SELECT password_hash FROM users WHERE id = ?`).bind(targetId).first();
+        if (!fullUser || !await verifyPassword(String(data.current_password), fullUser.password_hash)) {
+          throw new Error("\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u0627\u0644\u062D\u0627\u0644\u064A\u0629 \u063A\u064A\u0631 \u0635\u062D\u064A\u062D\u0629");
+        }
+      }
+      const newHash = await hashPassword(String(data.password));
+      await db.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).bind(newHash, targetId).run();
+    }
+    await logActivity(db, currentUser.id, "user", Number(targetId), "\u062A\u062D\u062F\u064A\u062B", `\u062A\u062D\u062F\u064A\u062B \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645 ${name}`);
+    return true;
+  }
+};
 
 // src/routes/users.ts
 var userRoutes = new Hono2();
 userRoutes.get("/", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const { results } = await c.env.DB.prepare(
-    `SELECT id, name, title, email, phone, role, department, bar_number, bar_year, hourly_rate, bio, initials, color, is_active, created_at
-     FROM users ORDER BY
-      CASE role WHEN 'managing_partner' THEN 1 WHEN 'partner' THEN 2 WHEN 'senior' THEN 3 WHEN 'lawyer' THEN 4 WHEN 'intern' THEN 5 ELSE 6 END, name`
-  ).all();
-  return c.json(results || []);
+  const users = await UsersService.getUsers(c.env.DB);
+  return c.json(users);
 });
 userRoutes.get("/:id", async (c) => {
   const currentUser = await requireUser(c);
   if (currentUser instanceof Response) return currentUser;
-  const id = c.req.param("id");
-  const user = await c.env.DB.prepare(
-    `SELECT id, name, title, email, phone, role, department, bar_number, bar_year, hourly_rate, bio, initials, color, is_active
-     FROM users WHERE id = ?`
-  ).bind(id).first();
-  if (!user) return c.json({ error: "\u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" }, 404);
-  const [cases, hours, tasks] = await Promise.all([
-    c.env.DB.prepare(
-      `SELECT c.*, cl.name AS client_name FROM cases c JOIN clients cl ON cl.id = c.client_id
-       WHERE c.lead_lawyer_id = ? ORDER BY c.updated_at DESC LIMIT 50`
-    ).bind(id).all(),
-    c.env.DB.prepare(
-      `SELECT COALESCE(SUM(hours),0) AS n FROM time_entries WHERE user_id = ? AND work_date >= date('now','start of month')`
-    ).bind(id).first(),
-    c.env.DB.prepare(
-      `SELECT COUNT(*) AS n FROM tasks WHERE assignee_id = ? AND status IN ('\u0645\u0641\u062A\u0648\u062D\u0629','\u062C\u0627\u0631\u064A\u0629')`
-    ).bind(id).first()
-  ]);
-  return c.json({
-    ...user,
-    cases: cases.results || [],
-    month_hours: hours?.n || 0,
-    open_tasks: tasks?.n || 0
-  });
+  const profile = await UsersService.getUserProfile(c.env.DB, c.req.param("id"));
+  if (!profile) return c.json({ error: "\u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" }, 404);
+  return c.json(profile);
 });
 userRoutes.post("/", async (c) => {
   const currentUser = await requireUser(c);
   if (currentUser instanceof Response) return currentUser;
   const forbidden = requireAdminOrPartner(currentUser, c);
   if (forbidden) return forbidden;
-  const body = await c.req.json();
-  const name = cleanString(body.name, MAX_NAME_LENGTH);
-  const email = cleanString(body.email, 254);
-  if (!name || !email) {
-    return c.json({ error: "\u0627\u0644\u0627\u0633\u0645 \u0648\u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A \u0645\u0637\u0644\u0648\u0628\u0627\u0646" }, 400);
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const id = await UsersService.createUser(c.env.DB, body, currentUser.id);
+    return c.json({ id });
+  } catch (err) {
+    return c.json({ error: err.message }, 400);
   }
-  if (!isValidEmail(email)) {
-    return c.json({ error: "\u0635\u064A\u063A\u0629 \u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A \u063A\u064A\u0631 \u0635\u062D\u064A\u062D\u0629" }, 400);
-  }
-  const cleanEmail = email.toLowerCase();
-  const existing = await c.env.DB.prepare(`SELECT id FROM users WHERE email = ?`).bind(cleanEmail).first();
-  if (existing) {
-    return c.json({ error: "\u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A \u0645\u0633\u062C\u0644 \u0628\u0627\u0644\u0641\u0639\u0644" }, 400);
-  }
-  const role = body.role && isAllowed(body.role, [...ALLOWED_ROLES]) ? body.role : "lawyer";
-  const rawPassword = body.password || crypto.getRandomValues(new Uint8Array(16)).reduce((s, b) => s + b.toString(36), "");
-  const hash = await hashPassword(rawPassword);
-  const result = await c.env.DB.prepare(
-    `INSERT INTO users (name, title, email, phone, password_hash, role, department, bar_number, bar_year, hourly_rate, bio, initials, color)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(
-    name,
-    cleanString(body.title, MAX_TEXT_LENGTH),
-    cleanEmail,
-    cleanString(body.phone, 30),
-    hash,
-    role,
-    cleanString(body.department, MAX_TEXT_LENGTH),
-    cleanString(body.bar_number, 50),
-    body.bar_year ? Number(body.bar_year) : null,
-    Number(body.hourly_rate || 0),
-    cleanString(body.bio, MAX_TEXT_LENGTH),
-    cleanString(body.initials, 5) || name.slice(0, 2),
-    body.color || "#1F4E79"
-  ).run();
-  const id = result.meta.last_row_id;
-  await logActivity(c.env.DB, currentUser.id, "user", id, "\u0625\u0646\u0634\u0627\u0621", `\u0645\u0633\u062A\u062E\u062F\u0645 \u062C\u062F\u064A\u062F: ${name}`);
-  return c.json({ id });
 });
 userRoutes.put("/:id", async (c) => {
   const currentUser = await requireUser(c);
   if (currentUser instanceof Response) return currentUser;
-  const targetId = Number(c.req.param("id"));
-  const isSelf = currentUser.id === targetId;
-  const isPrivileged = ["managing_partner", "partner", "admin"].includes(currentUser.role);
-  if (!isSelf && !isPrivileged) {
-    return c.json({ error: "\u063A\u064A\u0631 \u0645\u0635\u0631\u062D \u0628\u062A\u0639\u062F\u064A\u0644 \u0628\u064A\u0627\u0646\u0627\u062A \u0647\u0630\u0627 \u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645" }, 403);
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    await UsersService.updateUser(c.env.DB, c.req.param("id"), body, currentUser);
+    return c.json({ ok: true });
+  } catch (err) {
+    let status = 400;
+    if (err.message.includes("\u063A\u064A\u0631 \u0645\u0635\u0631\u062D")) status = 403;
+    else if (err.message === "\u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F") status = 404;
+    return c.json({ error: err.message }, status);
   }
-  const existing = await c.env.DB.prepare(
-    `SELECT id, name, title, email, phone, role, department, bar_number, bar_year, hourly_rate, bio, initials, color, is_active FROM users WHERE id = ?`
-  ).bind(targetId).first();
-  if (!existing) return c.json({ error: "\u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" }, 404);
-  const body = await c.req.json();
-  const name = body.name !== void 0 ? cleanString(body.name, MAX_NAME_LENGTH) || existing.name : existing.name;
-  const title = body.title !== void 0 ? cleanString(body.title, MAX_TEXT_LENGTH) : existing.title;
-  const phone = body.phone !== void 0 ? cleanString(body.phone, 30) : existing.phone;
-  const bio = body.bio !== void 0 ? cleanString(body.bio, MAX_TEXT_LENGTH) : existing.bio;
-  const initials = body.initials !== void 0 ? cleanString(body.initials, 5) : existing.initials;
-  const color = body.color !== void 0 ? body.color : existing.color;
-  const department = body.department !== void 0 ? cleanString(body.department, MAX_TEXT_LENGTH) : existing.department;
-  const bar_number = body.bar_number !== void 0 ? cleanString(body.bar_number, 50) : existing.bar_number;
-  const bar_year = body.bar_year !== void 0 ? body.bar_year ? Number(body.bar_year) : null : existing.bar_year;
-  const role = isPrivileged && body.role !== void 0 && isAllowed(body.role, [...ALLOWED_ROLES]) ? body.role : existing.role;
-  const is_active = isPrivileged && body.is_active !== void 0 ? Number(body.is_active) : existing.is_active;
-  const hourly_rate = isPrivileged && body.hourly_rate !== void 0 ? Number(body.hourly_rate) : existing.hourly_rate;
-  const email = isPrivileged && body.email !== void 0 ? String(body.email).trim().toLowerCase() : existing.email;
-  await c.env.DB.prepare(
-    `UPDATE users SET name=?, title=?, email=?, phone=?, role=?, department=?, bar_number=?, bar_year=?, hourly_rate=?, bio=?, initials=?, color=?, is_active=? WHERE id=?`
-  ).bind(name, title, email, phone, role, department, bar_number, bar_year, hourly_rate, bio, initials, color, is_active, targetId).run();
-  if (body.password) {
-    if (typeof body.password !== "string" || body.password.length < 6) {
-      return c.json({ error: "\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u064A\u062C\u0628 \u0623\u0644\u0627 \u062A\u0642\u0644 \u0639\u0646 6 \u0623\u062D\u0631\u0641" }, 400);
-    }
-    if (!isPrivileged) {
-      if (!body.current_password) {
-        return c.json({ error: "\u064A\u0631\u062C\u0649 \u0625\u062F\u062E\u0627\u0644 \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u0627\u0644\u062D\u0627\u0644\u064A\u0629 \u0644\u062A\u063A\u064A\u064A\u0631 \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631" }, 400);
-      }
-      const fullUser = await c.env.DB.prepare(`SELECT password_hash FROM users WHERE id = ?`).bind(targetId).first();
-      if (!fullUser || !await verifyPassword(String(body.current_password), fullUser.password_hash)) {
-        return c.json({ error: "\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u0627\u0644\u062D\u0627\u0644\u064A\u0629 \u063A\u064A\u0631 \u0635\u062D\u064A\u062D\u0629" }, 400);
-      }
-    }
-    const newHash = await hashPassword(String(body.password));
-    await c.env.DB.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).bind(newHash, targetId).run();
-  }
-  await logActivity(c.env.DB, currentUser.id, "user", targetId, "\u062A\u062D\u062F\u064A\u062B", `\u062A\u062D\u062F\u064A\u062B \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645 ${name}`);
-  return c.json({ ok: true });
 });
+
+// src/services/clients.service.ts
+var ClientsService = class {
+  /**
+   * Lists clients with keyword and status filtering, including case counts and balance
+   */
+  static async getClients(db, filters = {}) {
+    const { q, status } = filters;
+    let sql = `SELECT cl.*, u.name AS lawyer_name,
+      (SELECT COUNT(*) FROM cases WHERE client_id = cl.id) AS cases_count,
+      (SELECT COALESCE(SUM(total-paid),0) FROM invoices WHERE client_id = cl.id AND status NOT IN ('\u0645\u0644\u063A\u0627\u0629','\u0645\u0633\u062F\u062F\u0629')) AS balance
+      FROM clients cl LEFT JOIN users u ON u.id = cl.assigned_lawyer_id WHERE 1=1`;
+    const binds = [];
+    if (q) {
+      sql += ` AND (cl.name LIKE ? ESCAPE '\\' OR cl.phone LIKE ? ESCAPE '\\' OR cl.national_id LIKE ? ESCAPE '\\' OR cl.tax_id LIKE ? ESCAPE '\\')`;
+      const like = `%${escapeLike(q)}%`;
+      binds.push(like, like, like, like);
+    }
+    if (status && isAllowed(status, [...ALLOWED_CLIENT_STATUSES])) {
+      sql += ` AND cl.status = ?`;
+      binds.push(status);
+    }
+    sql += ` ORDER BY CASE cl.status WHEN 'vip' THEN 0 ELSE 1 END, cl.name LIMIT 100`;
+    const { results } = await db.prepare(sql).bind(...binds).all();
+    return results || [];
+  }
+  /**
+   * Fetches single client details including linked cases, invoices, POAs, and notes
+   */
+  static async getClientById(db, id) {
+    const client = await db.prepare(
+      `SELECT cl.*, u.name AS lawyer_name FROM clients cl LEFT JOIN users u ON u.id = cl.assigned_lawyer_id WHERE cl.id = ?`
+    ).bind(id).first();
+    if (!client) return null;
+    const [cases, invoices, poas, notes] = await Promise.all([
+      db.prepare(
+        `SELECT c.*, ct.name AS type_name, co.name AS court_name, u.name AS lawyer_name
+         FROM cases c
+         LEFT JOIN case_types ct ON ct.id=c.case_type_id
+         LEFT JOIN courts co ON co.id=c.court_id
+         LEFT JOIN users u ON u.id=c.lead_lawyer_id
+         WHERE c.client_id=? ORDER BY c.created_at DESC`
+      ).bind(id).all(),
+      db.prepare(`SELECT * FROM invoices WHERE client_id=? ORDER BY issue_date DESC LIMIT 50`).bind(id).all(),
+      db.prepare(
+        `SELECT p.*, u.name AS lawyer_name FROM powers_of_attorney p LEFT JOIN users u ON u.id=p.lawyer_id WHERE p.client_id=? ORDER BY p.issue_date DESC`
+      ).bind(id).all(),
+      db.prepare(
+        `SELECT n.*, u.name AS user_name FROM notes n LEFT JOIN users u ON u.id=n.user_id WHERE n.client_id=? ORDER BY n.pinned DESC, n.created_at DESC LIMIT 50`
+      ).bind(id).all()
+    ]);
+    return {
+      ...client,
+      cases: cases.results || [],
+      invoices: invoices.results || [],
+      poas: poas.results || [],
+      notes: notes.results || []
+    };
+  }
+  /**
+   * Registers a new client
+   */
+  static async createClient(db, data, currentUserId) {
+    const name = cleanString(data.name, MAX_NAME_LENGTH);
+    if (!name) {
+      throw new Error("\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0643\u0644 \u0645\u0637\u0644\u0648\u0628");
+    }
+    const clientType = data.type && isAllowed(data.type, [...ALLOWED_CLIENT_TYPES]) ? data.type : "individual";
+    const status = data.status && isAllowed(data.status, [...ALLOWED_CLIENT_STATUSES]) ? data.status : "active";
+    const result = await db.prepare(
+      `INSERT INTO clients (type,name,national_id,tax_id,commercial_reg,nationality,phone,phone2,email,address,city,occupation,company_rep,notes,status,assigned_lawyer_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(
+      clientType,
+      name,
+      cleanString(data.national_id, 30),
+      cleanString(data.tax_id, 30),
+      cleanString(data.commercial_reg, 30),
+      cleanString(data.nationality, 50) || "\u0645\u0635\u0631\u064A",
+      cleanString(data.phone, 30),
+      cleanString(data.phone2, 30),
+      cleanString(data.email, 254),
+      cleanString(data.address, MAX_TEXT_LENGTH),
+      cleanString(data.city, 100),
+      cleanString(data.occupation, 100),
+      cleanString(data.company_rep, MAX_NAME_LENGTH),
+      cleanString(data.notes, MAX_NOTE_LENGTH),
+      status,
+      data.assigned_lawyer_id ? Number(data.assigned_lawyer_id) : null
+    ).run();
+    const id = result.meta.last_row_id;
+    await logActivity(db, currentUserId, "client", id, "\u0625\u0646\u0634\u0627\u0621", `\u0645\u0648\u0643\u0644 \u062C\u062F\u064A\u062F: ${name}`);
+    return id;
+  }
+  /**
+   * Updates client profile safely without overriding missing attributes
+   */
+  static async updateClient(db, id, data, currentUserId) {
+    const existing = await db.prepare(`SELECT * FROM clients WHERE id = ?`).bind(id).first();
+    if (!existing) {
+      throw new Error("\u0627\u0644\u0645\u0648\u0643\u0644 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F");
+    }
+    const type = data.type !== void 0 && isAllowed(data.type, [...ALLOWED_CLIENT_TYPES]) ? data.type : existing.type;
+    const name = data.name !== void 0 ? cleanString(data.name, MAX_NAME_LENGTH) || existing.name : existing.name;
+    const national_id = data.national_id !== void 0 ? cleanString(data.national_id, 30) : existing.national_id;
+    const tax_id = data.tax_id !== void 0 ? cleanString(data.tax_id, 30) : existing.tax_id;
+    const commercial_reg = data.commercial_reg !== void 0 ? cleanString(data.commercial_reg, 30) : existing.commercial_reg;
+    const nationality = data.nationality !== void 0 ? cleanString(data.nationality, 50) : existing.nationality;
+    const phone = data.phone !== void 0 ? cleanString(data.phone, 30) : existing.phone;
+    const phone2 = data.phone2 !== void 0 ? cleanString(data.phone2, 30) : existing.phone2;
+    const email = data.email !== void 0 ? cleanString(data.email, 254) : existing.email;
+    const address = data.address !== void 0 ? cleanString(data.address, MAX_TEXT_LENGTH) : existing.address;
+    const city = data.city !== void 0 ? cleanString(data.city, 100) : existing.city;
+    const occupation = data.occupation !== void 0 ? cleanString(data.occupation, 100) : existing.occupation;
+    const company_rep = data.company_rep !== void 0 ? cleanString(data.company_rep, MAX_NAME_LENGTH) : existing.company_rep;
+    const notes = data.notes !== void 0 ? cleanString(data.notes, MAX_NOTE_LENGTH) : existing.notes;
+    const status = data.status !== void 0 && isAllowed(data.status, [...ALLOWED_CLIENT_STATUSES]) ? data.status : existing.status;
+    const assigned_lawyer_id = data.assigned_lawyer_id !== void 0 ? data.assigned_lawyer_id ? Number(data.assigned_lawyer_id) : null : existing.assigned_lawyer_id;
+    await db.prepare(
+      `UPDATE clients SET type=?, name=?, national_id=?, tax_id=?, commercial_reg=?, nationality=?, phone=?, phone2=?, email=?, address=?, city=?, occupation=?, company_rep=?, notes=?, status=?, assigned_lawyer_id=? WHERE id=?`
+    ).bind(type, name, national_id, tax_id, commercial_reg, nationality, phone, phone2, email, address, city, occupation, company_rep, notes, status, assigned_lawyer_id, id).run();
+    await logActivity(db, currentUserId, "client", Number(id), "\u062A\u062D\u062F\u064A\u062B", `\u062A\u062D\u062F\u064A\u062B \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0648\u0643\u0644 ${name}`);
+    return true;
+  }
+};
 
 // src/routes/clients.ts
 var clientRoutes = new Hono2();
 clientRoutes.get("/", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const q = c.req.query("q");
-  const status = c.req.query("status");
-  let sql = `SELECT cl.*, u.name AS lawyer_name,
-    (SELECT COUNT(*) FROM cases WHERE client_id = cl.id) AS cases_count,
-    (SELECT COALESCE(SUM(total-paid),0) FROM invoices WHERE client_id = cl.id AND status NOT IN ('\u0645\u0644\u063A\u0627\u0629','\u0645\u0633\u062F\u062F\u0629')) AS balance
-    FROM clients cl LEFT JOIN users u ON u.id = cl.assigned_lawyer_id WHERE 1=1`;
-  const binds = [];
-  if (q) {
-    sql += ` AND (cl.name LIKE ? ESCAPE '\\' OR cl.phone LIKE ? ESCAPE '\\' OR cl.national_id LIKE ? ESCAPE '\\' OR cl.tax_id LIKE ? ESCAPE '\\')`;
-    const like = `%${escapeLike(q)}%`;
-    binds.push(like, like, like, like);
-  }
-  if (status && isAllowed(status, [...ALLOWED_CLIENT_STATUSES])) {
-    sql += ` AND cl.status = ?`;
-    binds.push(status);
-  }
-  sql += ` ORDER BY CASE cl.status WHEN 'vip' THEN 0 ELSE 1 END, cl.name LIMIT 100`;
-  const { results } = await c.env.DB.prepare(sql).bind(...binds).all();
-  return c.json(results || []);
+  const clients = await ClientsService.getClients(c.env.DB, {
+    q: c.req.query("q"),
+    status: c.req.query("status")
+  });
+  return c.json(clients);
 });
 clientRoutes.get("/:id", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const id = c.req.param("id");
-  const client = await c.env.DB.prepare(
-    `SELECT cl.*, u.name AS lawyer_name FROM clients cl LEFT JOIN users u ON u.id = cl.assigned_lawyer_id WHERE cl.id = ?`
-  ).bind(id).first();
+  const client = await ClientsService.getClientById(c.env.DB, c.req.param("id"));
   if (!client) return c.json({ error: "\u0627\u0644\u0645\u0648\u0643\u0644 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" }, 404);
-  const [cases, invoices, poas, notes] = await Promise.all([
-    c.env.DB.prepare(
-      `SELECT c.*, ct.name AS type_name, co.name AS court_name, u.name AS lawyer_name
-       FROM cases c
-       LEFT JOIN case_types ct ON ct.id=c.case_type_id
-       LEFT JOIN courts co ON co.id=c.court_id
-       LEFT JOIN users u ON u.id=c.lead_lawyer_id
-       WHERE c.client_id=? ORDER BY c.created_at DESC`
-    ).bind(id).all(),
-    c.env.DB.prepare(`SELECT * FROM invoices WHERE client_id=? ORDER BY issue_date DESC LIMIT 50`).bind(id).all(),
-    c.env.DB.prepare(
-      `SELECT p.*, u.name AS lawyer_name FROM powers_of_attorney p LEFT JOIN users u ON u.id=p.lawyer_id WHERE p.client_id=? ORDER BY p.issue_date DESC`
-    ).bind(id).all(),
-    c.env.DB.prepare(
-      `SELECT n.*, u.name AS user_name FROM notes n LEFT JOIN users u ON u.id=n.user_id WHERE n.client_id=? ORDER BY n.pinned DESC, n.created_at DESC LIMIT 50`
-    ).bind(id).all()
-  ]);
-  return c.json({
-    ...client,
-    cases: cases.results || [],
-    invoices: invoices.results || [],
-    poas: poas.results || [],
-    notes: notes.results || []
-  });
+  return c.json(client);
 });
 clientRoutes.post("/", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const b = await c.req.json();
-  const name = cleanString(b.name, MAX_NAME_LENGTH);
-  if (!name) return c.json({ error: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0643\u0644 \u0645\u0637\u0644\u0648\u0628" }, 400);
-  const clientType = b.type && isAllowed(b.type, [...ALLOWED_CLIENT_TYPES]) ? b.type : "individual";
-  const status = b.status && isAllowed(b.status, [...ALLOWED_CLIENT_STATUSES]) ? b.status : "active";
-  const result = await c.env.DB.prepare(
-    `INSERT INTO clients (type,name,national_id,tax_id,commercial_reg,nationality,phone,phone2,email,address,city,occupation,company_rep,notes,status,assigned_lawyer_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-  ).bind(
-    clientType,
-    name,
-    cleanString(b.national_id, 30),
-    cleanString(b.tax_id, 30),
-    cleanString(b.commercial_reg, 30),
-    cleanString(b.nationality, 50) || "\u0645\u0635\u0631\u064A",
-    cleanString(b.phone, 30),
-    cleanString(b.phone2, 30),
-    cleanString(b.email, 254),
-    cleanString(b.address, MAX_TEXT_LENGTH),
-    cleanString(b.city, 100),
-    cleanString(b.occupation, 100),
-    cleanString(b.company_rep, MAX_NAME_LENGTH),
-    cleanString(b.notes, MAX_NOTE_LENGTH),
-    status,
-    b.assigned_lawyer_id ? Number(b.assigned_lawyer_id) : null
-  ).run();
-  const id = result.meta.last_row_id;
-  await logActivity(c.env.DB, user.id, "client", id, "\u0625\u0646\u0634\u0627\u0621", `\u0645\u0648\u0643\u0644 \u062C\u062F\u064A\u062F: ${name}`);
-  return c.json({ id });
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const id = await ClientsService.createClient(c.env.DB, body, user.id);
+    return c.json({ id });
+  } catch (err) {
+    return c.json({ error: err.message }, 400);
+  }
 });
 clientRoutes.put("/:id", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const id = c.req.param("id");
-  const existing = await c.env.DB.prepare(`SELECT * FROM clients WHERE id = ?`).bind(id).first();
-  if (!existing) return c.json({ error: "\u0627\u0644\u0645\u0648\u0643\u0644 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" }, 404);
-  const b = await c.req.json();
-  const type = b.type !== void 0 && isAllowed(b.type, [...ALLOWED_CLIENT_TYPES]) ? b.type : existing.type;
-  const name = b.name !== void 0 ? cleanString(b.name, MAX_NAME_LENGTH) || existing.name : existing.name;
-  const national_id = b.national_id !== void 0 ? cleanString(b.national_id, 30) : existing.national_id;
-  const tax_id = b.tax_id !== void 0 ? cleanString(b.tax_id, 30) : existing.tax_id;
-  const commercial_reg = b.commercial_reg !== void 0 ? cleanString(b.commercial_reg, 30) : existing.commercial_reg;
-  const nationality = b.nationality !== void 0 ? cleanString(b.nationality, 50) : existing.nationality;
-  const phone = b.phone !== void 0 ? cleanString(b.phone, 30) : existing.phone;
-  const phone2 = b.phone2 !== void 0 ? cleanString(b.phone2, 30) : existing.phone2;
-  const email = b.email !== void 0 ? cleanString(b.email, 254) : existing.email;
-  const address = b.address !== void 0 ? cleanString(b.address, MAX_TEXT_LENGTH) : existing.address;
-  const city = b.city !== void 0 ? cleanString(b.city, 100) : existing.city;
-  const occupation = b.occupation !== void 0 ? cleanString(b.occupation, 100) : existing.occupation;
-  const company_rep = b.company_rep !== void 0 ? cleanString(b.company_rep, MAX_NAME_LENGTH) : existing.company_rep;
-  const notes = b.notes !== void 0 ? cleanString(b.notes, MAX_NOTE_LENGTH) : existing.notes;
-  const status = b.status !== void 0 && isAllowed(b.status, [...ALLOWED_CLIENT_STATUSES]) ? b.status : existing.status;
-  const assigned_lawyer_id = b.assigned_lawyer_id !== void 0 ? b.assigned_lawyer_id ? Number(b.assigned_lawyer_id) : null : existing.assigned_lawyer_id;
-  await c.env.DB.prepare(
-    `UPDATE clients SET type=?, name=?, national_id=?, tax_id=?, commercial_reg=?, nationality=?, phone=?, phone2=?, email=?, address=?, city=?, occupation=?, company_rep=?, notes=?, status=?, assigned_lawyer_id=? WHERE id=?`
-  ).bind(type, name, national_id, tax_id, commercial_reg, nationality, phone, phone2, email, address, city, occupation, company_rep, notes, status, assigned_lawyer_id, id).run();
-  await logActivity(c.env.DB, user.id, "client", Number(id), "\u062A\u062D\u062F\u064A\u062B", `\u062A\u062D\u062F\u064A\u062B \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0648\u0643\u0644 ${name}`);
-  return c.json({ ok: true });
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    await ClientsService.updateClient(c.env.DB, c.req.param("id"), body, user.id);
+    return c.json({ ok: true });
+  } catch (err) {
+    const status = err.message === "\u0627\u0644\u0645\u0648\u0643\u0644 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" ? 404 : 400;
+    return c.json({ error: err.message }, status);
+  }
 });
+
+// src/services/cases.service.ts
+var CasesService = class {
+  /**
+   * Searches and lists cases with priority and date sorting
+   */
+  static async getCases(db, filters = {}) {
+    const { q, status, lawyer, type, priority } = filters;
+    let sql = `SELECT c.*, cl.name AS client_name, cl.type AS client_type, ct.name AS type_name, ct.category,
+      co.name AS court_name, u.name AS lawyer_name, u.initials AS lawyer_initials, u.color AS lawyer_color,
+      (SELECT MIN(hearing_date) FROM hearings h WHERE h.case_id=c.id AND h.hearing_date>=date('now') AND h.status IN ('\u0642\u0627\u062F\u0645\u0629','\u062D\u062C\u0632 \u0644\u0644\u062D\u0643\u0645')) AS next_hearing
+      FROM cases c
+      JOIN clients cl ON cl.id=c.client_id
+      LEFT JOIN case_types ct ON ct.id=c.case_type_id
+      LEFT JOIN courts co ON co.id=c.court_id
+      LEFT JOIN users u ON u.id=c.lead_lawyer_id
+      WHERE 1=1`;
+    const binds = [];
+    if (q) {
+      sql += ` AND (c.title LIKE ? ESCAPE '\\' OR c.case_no LIKE ? ESCAPE '\\' OR cl.name LIKE ? ESCAPE '\\' OR c.opposing_name LIKE ? ESCAPE '\\')`;
+      const like = `%${escapeLike(q)}%`;
+      binds.push(like, like, like, like);
+    }
+    if (status && isAllowed(status, [...ALLOWED_CASE_STATUSES])) {
+      sql += ` AND c.status = ?`;
+      binds.push(status);
+    }
+    if (lawyer) {
+      sql += ` AND c.lead_lawyer_id = ?`;
+      binds.push(lawyer);
+    }
+    if (type) {
+      sql += ` AND c.case_type_id = ?`;
+      binds.push(type);
+    }
+    if (priority && isAllowed(priority, [...ALLOWED_CASE_PRIORITIES])) {
+      sql += ` AND c.priority = ?`;
+      binds.push(priority);
+    }
+    sql += ` ORDER BY CASE c.priority WHEN '\u0639\u0627\u062C\u0644\u0629' THEN 0 WHEN '\u0639\u0627\u0644\u064A\u0629' THEN 1 WHEN '\u0639\u0627\u062F\u064A\u0629' THEN 2 ELSE 3 END, c.updated_at DESC LIMIT 150`;
+    const { results } = await db.prepare(sql).bind(...binds).all();
+    return results || [];
+  }
+  /**
+   * Fetches complete case dossier with all linked records
+   */
+  static async getCaseById(db, id) {
+    const caseRecord = await db.prepare(
+      `SELECT c.*, cl.name AS client_name, cl.phone AS client_phone, cl.type AS client_type, cl.email AS client_email,
+        ct.name AS type_name, ct.category, co.name AS court_name, u.name AS lawyer_name, u.initials AS lawyer_initials, u.color AS lawyer_color
+       FROM cases c
+       JOIN clients cl ON cl.id=c.client_id
+       LEFT JOIN case_types ct ON ct.id=c.case_type_id
+       LEFT JOIN courts co ON co.id=c.court_id
+       LEFT JOIN users u ON u.id=c.lead_lawyer_id
+       WHERE c.id=?`
+    ).bind(id).first();
+    if (!caseRecord) return null;
+    const [hearings, docs, notes, lawyers, invoices, expenses, times, tasks, poas] = await Promise.all([
+      db.prepare(`SELECT h.*, u.name AS lawyer_name, co.name AS court_name FROM hearings h LEFT JOIN users u ON u.id=h.lawyer_id LEFT JOIN courts co ON co.id=h.court_id WHERE h.case_id=? ORDER BY h.hearing_date DESC LIMIT 50`).bind(id).all(),
+      db.prepare(`SELECT d.*, u.name AS uploader FROM documents d LEFT JOIN users u ON u.id=d.uploaded_by WHERE d.case_id=? ORDER BY d.created_at DESC LIMIT 50`).bind(id).all(),
+      db.prepare(`SELECT n.*, u.name AS user_name, u.initials, u.color FROM notes n LEFT JOIN users u ON u.id=n.user_id WHERE n.case_id=? ORDER BY n.pinned DESC, n.created_at DESC LIMIT 50`).bind(id).all(),
+      db.prepare(`SELECT u.id, u.name, u.title, u.initials, u.color, clw.role FROM case_lawyers clw JOIN users u ON u.id=clw.user_id WHERE clw.case_id=?`).bind(id).all(),
+      db.prepare(`SELECT * FROM invoices WHERE case_id=? ORDER BY issue_date DESC LIMIT 50`).bind(id).all(),
+      db.prepare(`SELECT * FROM expenses WHERE case_id=? ORDER BY expense_date DESC LIMIT 50`).bind(id).all(),
+      db.prepare(`SELECT t.*, u.name AS user_name FROM time_entries t JOIN users u ON u.id=t.user_id WHERE t.case_id=? ORDER BY t.work_date DESC LIMIT 50`).bind(id).all(),
+      db.prepare(`SELECT t.*, u.name AS assignee_name FROM tasks t LEFT JOIN users u ON u.id=t.assignee_id WHERE t.case_id=? ORDER BY t.due_date LIMIT 50`).bind(id).all(),
+      db.prepare(`SELECT p.*, u.name AS lawyer_name FROM powers_of_attorney p LEFT JOIN users u ON u.id=p.lawyer_id WHERE p.case_id=? OR (p.case_id IS NULL AND p.client_id=?) LIMIT 50`).bind(id, caseRecord.client_id).all()
+    ]);
+    return {
+      ...caseRecord,
+      hearings: hearings.results || [],
+      documents: docs.results || [],
+      notes: notes.results || [],
+      lawyers: lawyers.results || [],
+      invoices: invoices.results || [],
+      expenses: expenses.results || [],
+      time_entries: times.results || [],
+      tasks: tasks.results || [],
+      poas: poas.results || []
+    };
+  }
+  /**
+   * Creates a new case record
+   */
+  static async createCase(db, data, currentUserId) {
+    const case_no = cleanString(data.case_no, 50);
+    const title = cleanString(data.title, MAX_NAME_LENGTH);
+    if (!case_no || !data.year || !title || !data.client_id) {
+      throw new Error("\u0631\u0642\u0645 \u0627\u0644\u062F\u0639\u0648\u0649 \u0648\u0627\u0644\u0633\u0646\u0629 \u0648\u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u062F\u0639\u0648\u0649 \u0648\u0627\u0644\u0645\u0648\u0643\u0644 \u062D\u0642\u0648\u0644 \u0625\u062C\u0628\u0627\u0631\u064A\u0629");
+    }
+    const status = data.status && isAllowed(data.status, [...ALLOWED_CASE_STATUSES]) ? data.status : "\u0645\u062A\u062F\u0627\u0648\u0644\u0629";
+    const priority = data.priority && isAllowed(data.priority, [...ALLOWED_CASE_PRIORITIES]) ? data.priority : "\u0639\u0627\u062F\u064A\u0629";
+    const degree = data.degree && isAllowed(data.degree, [...ALLOWED_CASE_DEGREES]) ? data.degree : "\u0627\u0628\u062A\u062F\u0627\u0626\u064A";
+    const result = await db.prepare(
+      `INSERT INTO cases (case_no, year, title, case_type_id, court_id, circuit, degree, status, priority, client_id, opposing_name, opposing_lawyer, lead_lawyer_id, subject, claim_value, currency, filing_date, next_action)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      case_no,
+      Number(data.year),
+      title,
+      data.case_type_id ? Number(data.case_type_id) : null,
+      data.court_id ? Number(data.court_id) : null,
+      cleanString(data.circuit, 100),
+      degree,
+      status,
+      priority,
+      Number(data.client_id),
+      cleanString(data.opposing_name, MAX_NAME_LENGTH),
+      cleanString(data.opposing_lawyer, MAX_NAME_LENGTH),
+      data.lead_lawyer_id ? Number(data.lead_lawyer_id) : null,
+      cleanString(data.subject, MAX_TEXT_LENGTH),
+      Number(data.claim_value || 0),
+      data.currency || "EGP",
+      data.filing_date || null,
+      cleanString(data.next_action, MAX_TEXT_LENGTH)
+    ).run();
+    const id = result.meta.last_row_id;
+    if (data.lead_lawyer_id) {
+      await db.prepare(`INSERT OR IGNORE INTO case_lawyers (case_id, user_id, role) VALUES (?, ?, '\u0631\u0626\u064A\u0633')`).bind(id, data.lead_lawyer_id).run();
+    }
+    await logActivity(db, currentUserId, "case", id, "\u0625\u0646\u0634\u0627\u0621", `\u0642\u0636\u064A\u0629 \u062C\u062F\u064A\u062F\u0629 ${case_no} \u0644\u0633\u0646\u0629 ${data.year}`);
+    return id;
+  }
+  /**
+   * Updates case details
+   */
+  static async updateCase(db, id, data, currentUserId) {
+    const existing = await db.prepare(`SELECT * FROM cases WHERE id = ?`).bind(id).first();
+    if (!existing) {
+      throw new Error("\u0627\u0644\u0642\u0636\u064A\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629");
+    }
+    const case_no = data.case_no !== void 0 ? cleanString(data.case_no, 50) || existing.case_no : existing.case_no;
+    const year = data.year !== void 0 ? Number(data.year) : existing.year;
+    const title = data.title !== void 0 ? cleanString(data.title, MAX_NAME_LENGTH) || existing.title : existing.title;
+    const case_type_id = data.case_type_id !== void 0 ? data.case_type_id ? Number(data.case_type_id) : null : existing.case_type_id;
+    const court_id = data.court_id !== void 0 ? data.court_id ? Number(data.court_id) : null : existing.court_id;
+    const circuit = data.circuit !== void 0 ? cleanString(data.circuit, 100) : existing.circuit;
+    const degree = data.degree !== void 0 && isAllowed(data.degree, [...ALLOWED_CASE_DEGREES]) ? data.degree : existing.degree;
+    const status = data.status !== void 0 && isAllowed(data.status, [...ALLOWED_CASE_STATUSES]) ? data.status : existing.status;
+    const priority = data.priority !== void 0 && isAllowed(data.priority, [...ALLOWED_CASE_PRIORITIES]) ? data.priority : existing.priority;
+    const client_id = data.client_id !== void 0 ? Number(data.client_id) : existing.client_id;
+    const opposing_name = data.opposing_name !== void 0 ? cleanString(data.opposing_name, MAX_NAME_LENGTH) : existing.opposing_name;
+    const opposing_lawyer = data.opposing_lawyer !== void 0 ? cleanString(data.opposing_lawyer, MAX_NAME_LENGTH) : existing.opposing_lawyer;
+    const lead_lawyer_id = data.lead_lawyer_id !== void 0 ? data.lead_lawyer_id ? Number(data.lead_lawyer_id) : null : existing.lead_lawyer_id;
+    const subject = data.subject !== void 0 ? cleanString(data.subject, MAX_TEXT_LENGTH) : existing.subject;
+    const claim_value = data.claim_value !== void 0 ? Number(data.claim_value || 0) : existing.claim_value;
+    const currency = data.currency !== void 0 ? data.currency || "EGP" : existing.currency || "EGP";
+    const filing_date = data.filing_date !== void 0 ? data.filing_date : existing.filing_date;
+    const next_action = data.next_action !== void 0 ? cleanString(data.next_action, MAX_TEXT_LENGTH) : existing.next_action;
+    const outcome = data.outcome !== void 0 ? cleanString(data.outcome, MAX_TEXT_LENGTH) : existing.outcome;
+    const closed_at = data.closed_at !== void 0 ? data.closed_at : existing.closed_at;
+    await db.prepare(
+      `UPDATE cases SET case_no=?, year=?, title=?, case_type_id=?, court_id=?, circuit=?, degree=?, status=?, priority=?, client_id=?, opposing_name=?, opposing_lawyer=?, lead_lawyer_id=?, subject=?, claim_value=?, currency=?, filing_date=?, next_action=?, outcome=?, closed_at=?, updated_at=datetime('now') WHERE id=?`
+    ).bind(case_no, year, title, case_type_id, court_id, circuit, degree, status, priority, client_id, opposing_name, opposing_lawyer, lead_lawyer_id, subject, claim_value, currency, filing_date, next_action, outcome, closed_at, id).run();
+    await logActivity(db, currentUserId, "case", Number(id), "\u062A\u062D\u062F\u064A\u062B", `\u062A\u062D\u062F\u064A\u062B \u0627\u0644\u0642\u0636\u064A\u0629 ${case_no}`);
+    return true;
+  }
+  /**
+   * Assigns a lawyer to a case
+   */
+  static async assignLawyer(db, caseId, lawyerId, role = "\u0645\u0633\u0627\u0639\u062F") {
+    await db.prepare(`INSERT OR REPLACE INTO case_lawyers (case_id, user_id, role) VALUES (?, ?, ?)`).bind(caseId, lawyerId, cleanString(role, 50) || "\u0645\u0633\u0627\u0639\u062F").run();
+  }
+  /**
+   * Lists court session hearings
+   */
+  static async getHearings(db, filters = {}) {
+    const from = filters.from || "2000-01-01";
+    const to = filters.to || "2099-12-31";
+    const { lawyer, status } = filters;
+    let sql = `SELECT h.*, cs.case_no, cs.year, cs.title AS case_title, cs.priority, cl.name AS client_name, u.name AS lawyer_name, u.initials, u.color, co.name AS court_name
+      FROM hearings h
+      JOIN cases cs ON cs.id = h.case_id
+      JOIN clients cl ON cl.id = cs.client_id
+      LEFT JOIN users u ON u.id = h.lawyer_id
+      LEFT JOIN courts co ON co.id = h.court_id
+      WHERE h.hearing_date BETWEEN ? AND ?`;
+    const binds = [from, to];
+    if (lawyer) {
+      sql += ` AND h.lawyer_id = ?`;
+      binds.push(lawyer);
+    }
+    if (status && isAllowed(status, [...ALLOWED_HEARING_STATUSES])) {
+      sql += ` AND h.status = ?`;
+      binds.push(status);
+    }
+    sql += ` ORDER BY h.hearing_date, h.hearing_time LIMIT 250`;
+    const { results } = await db.prepare(sql).bind(...binds).all();
+    return results || [];
+  }
+  /**
+   * Schedules a court hearing
+   */
+  static async scheduleHearing(db, data, currentUserId) {
+    if (!data.case_id || !data.hearing_date) {
+      throw new Error("\u0627\u0644\u0642\u0636\u064A\u0629 \u0648\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062C\u0644\u0633\u0629 \u0645\u0637\u0644\u0648\u0628\u0627\u0646");
+    }
+    const status = data.status && isAllowed(data.status, [...ALLOWED_HEARING_STATUSES]) ? data.status : "\u0642\u0627\u062F\u0645\u0629";
+    const result = await db.prepare(
+      `INSERT INTO hearings (case_id, hearing_date, hearing_time, court_id, circuit, type, purpose, lawyer_id, status, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      Number(data.case_id),
+      data.hearing_date,
+      data.hearing_time || null,
+      data.court_id ? Number(data.court_id) : null,
+      cleanString(data.circuit, 100),
+      cleanString(data.type, 50) || "\u0645\u0631\u0627\u0641\u0639\u0629",
+      cleanString(data.purpose, MAX_TEXT_LENGTH),
+      data.lawyer_id ? Number(data.lawyer_id) : null,
+      status,
+      cleanString(data.notes, MAX_NOTE_LENGTH)
+    ).run();
+    const id = result.meta.last_row_id;
+    await logActivity(db, currentUserId, "hearing", id, "\u062C\u062F\u0648\u0644\u0629", `\u062C\u0644\u0633\u0629 ${data.hearing_date}`);
+    return id;
+  }
+  /**
+   * Updates hearing outcome or details
+   */
+  static async updateHearing(db, id, data) {
+    const existing = await db.prepare(`SELECT * FROM hearings WHERE id = ?`).bind(id).first();
+    if (!existing) {
+      throw new Error("\u0627\u0644\u062C\u0644\u0633\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629");
+    }
+    const hearing_date = data.hearing_date !== void 0 ? data.hearing_date : existing.hearing_date;
+    const hearing_time = data.hearing_time !== void 0 ? data.hearing_time : existing.hearing_time;
+    const court_id = data.court_id !== void 0 ? data.court_id ? Number(data.court_id) : null : existing.court_id;
+    const circuit = data.circuit !== void 0 ? cleanString(data.circuit, 100) : existing.circuit;
+    const type = data.type !== void 0 ? cleanString(data.type, 50) : existing.type;
+    const purpose = data.purpose !== void 0 ? cleanString(data.purpose, MAX_TEXT_LENGTH) : existing.purpose;
+    const result = data.result !== void 0 ? cleanString(data.result, MAX_TEXT_LENGTH) : existing.result;
+    const next_date = data.next_date !== void 0 ? data.next_date : existing.next_date;
+    const lawyer_id = data.lawyer_id !== void 0 ? data.lawyer_id ? Number(data.lawyer_id) : null : existing.lawyer_id;
+    const status = data.status !== void 0 && isAllowed(data.status, [...ALLOWED_HEARING_STATUSES]) ? data.status : existing.status;
+    const notes = data.notes !== void 0 ? cleanString(data.notes, MAX_NOTE_LENGTH) : existing.notes;
+    await db.prepare(
+      `UPDATE hearings SET hearing_date=?, hearing_time=?, court_id=?, circuit=?, type=?, purpose=?, result=?, next_date=?, lawyer_id=?, status=?, notes=? WHERE id=?`
+    ).bind(hearing_date, hearing_time, court_id, circuit, type, purpose, result, next_date, lawyer_id, status, notes, id).run();
+    return true;
+  }
+};
 
 // src/routes/cases.ts
 var caseRoutes = new Hono2();
 caseRoutes.get("/cases", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const { q, status, lawyer, type, priority } = c.req.query();
-  let sql = `SELECT c.*, cl.name AS client_name, cl.type AS client_type, ct.name AS type_name, ct.category,
-    co.name AS court_name, u.name AS lawyer_name, u.initials AS lawyer_initials, u.color AS lawyer_color,
-    (SELECT MIN(hearing_date) FROM hearings h WHERE h.case_id=c.id AND h.hearing_date>=date('now') AND h.status IN ('\u0642\u0627\u062F\u0645\u0629','\u062D\u062C\u0632 \u0644\u0644\u062D\u0643\u0645')) AS next_hearing
-    FROM cases c
-    JOIN clients cl ON cl.id=c.client_id
-    LEFT JOIN case_types ct ON ct.id=c.case_type_id
-    LEFT JOIN courts co ON co.id=c.court_id
-    LEFT JOIN users u ON u.id=c.lead_lawyer_id
-    WHERE 1=1`;
-  const binds = [];
-  if (q) {
-    sql += ` AND (c.title LIKE ? ESCAPE '\\' OR c.case_no LIKE ? ESCAPE '\\' OR cl.name LIKE ? ESCAPE '\\' OR c.opposing_name LIKE ? ESCAPE '\\')`;
-    const like = `%${escapeLike(q)}%`;
-    binds.push(like, like, like, like);
-  }
-  if (status && isAllowed(status, [...ALLOWED_CASE_STATUSES])) {
-    sql += ` AND c.status = ?`;
-    binds.push(status);
-  }
-  if (lawyer) {
-    sql += ` AND c.lead_lawyer_id = ?`;
-    binds.push(lawyer);
-  }
-  if (type) {
-    sql += ` AND c.case_type_id = ?`;
-    binds.push(type);
-  }
-  if (priority && isAllowed(priority, [...ALLOWED_CASE_PRIORITIES])) {
-    sql += ` AND c.priority = ?`;
-    binds.push(priority);
-  }
-  sql += ` ORDER BY CASE c.priority WHEN '\u0639\u0627\u062C\u0644\u0629' THEN 0 WHEN '\u0639\u0627\u0644\u064A\u0629' THEN 1 WHEN '\u0639\u0627\u062F\u064A\u0629' THEN 2 ELSE 3 END, c.updated_at DESC LIMIT 150`;
-  const { results } = await c.env.DB.prepare(sql).bind(...binds).all();
-  return c.json(results || []);
+  const query = c.req.query();
+  const cases = await CasesService.getCases(c.env.DB, query);
+  return c.json(cases);
 });
 caseRoutes.get("/cases/:id", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const id = c.req.param("id");
-  const caseRecord = await c.env.DB.prepare(
-    `SELECT c.*, cl.name AS client_name, cl.phone AS client_phone, cl.type AS client_type, cl.email AS client_email,
-      ct.name AS type_name, ct.category, co.name AS court_name, u.name AS lawyer_name, u.initials AS lawyer_initials, u.color AS lawyer_color
-     FROM cases c
-     JOIN clients cl ON cl.id=c.client_id
-     LEFT JOIN case_types ct ON ct.id=c.case_type_id
-     LEFT JOIN courts co ON co.id=c.court_id
-     LEFT JOIN users u ON u.id=c.lead_lawyer_id
-     WHERE c.id=?`
-  ).bind(id).first();
-  if (!caseRecord) return c.json({ error: "\u0627\u0644\u0642\u0636\u064A\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" }, 404);
-  const [hearings, docs, notes, lawyers, invoices, expenses, times, tasks, poas] = await Promise.all([
-    c.env.DB.prepare(`SELECT h.*, u.name AS lawyer_name, co.name AS court_name FROM hearings h LEFT JOIN users u ON u.id=h.lawyer_id LEFT JOIN courts co ON co.id=h.court_id WHERE h.case_id=? ORDER BY h.hearing_date DESC LIMIT 50`).bind(id).all(),
-    c.env.DB.prepare(`SELECT d.*, u.name AS uploader FROM documents d LEFT JOIN users u ON u.id=d.uploaded_by WHERE d.case_id=? ORDER BY d.created_at DESC LIMIT 50`).bind(id).all(),
-    c.env.DB.prepare(`SELECT n.*, u.name AS user_name, u.initials, u.color FROM notes n LEFT JOIN users u ON u.id=n.user_id WHERE n.case_id=? ORDER BY n.pinned DESC, n.created_at DESC LIMIT 50`).bind(id).all(),
-    c.env.DB.prepare(`SELECT u.id, u.name, u.title, u.initials, u.color, clw.role FROM case_lawyers clw JOIN users u ON u.id=clw.user_id WHERE clw.case_id=?`).bind(id).all(),
-    c.env.DB.prepare(`SELECT * FROM invoices WHERE case_id=? ORDER BY issue_date DESC LIMIT 50`).bind(id).all(),
-    c.env.DB.prepare(`SELECT * FROM expenses WHERE case_id=? ORDER BY expense_date DESC LIMIT 50`).bind(id).all(),
-    c.env.DB.prepare(`SELECT t.*, u.name AS user_name FROM time_entries t JOIN users u ON u.id=t.user_id WHERE t.case_id=? ORDER BY t.work_date DESC LIMIT 50`).bind(id).all(),
-    c.env.DB.prepare(`SELECT t.*, u.name AS assignee_name FROM tasks t LEFT JOIN users u ON u.id=t.assignee_id WHERE t.case_id=? ORDER BY t.due_date LIMIT 50`).bind(id).all(),
-    c.env.DB.prepare(`SELECT p.*, u.name AS lawyer_name FROM powers_of_attorney p LEFT JOIN users u ON u.id=p.lawyer_id WHERE p.case_id=? OR (p.case_id IS NULL AND p.client_id=?) LIMIT 50`).bind(id, caseRecord.client_id).all()
-  ]);
-  return c.json({
-    ...caseRecord,
-    hearings: hearings.results || [],
-    documents: docs.results || [],
-    notes: notes.results || [],
-    lawyers: lawyers.results || [],
-    invoices: invoices.results || [],
-    expenses: expenses.results || [],
-    time_entries: times.results || [],
-    tasks: tasks.results || [],
-    poas: poas.results || []
-  });
+  const caseData = await CasesService.getCaseById(c.env.DB, c.req.param("id"));
+  if (!caseData) return c.json({ error: "\u0627\u0644\u0642\u0636\u064A\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" }, 404);
+  return c.json(caseData);
 });
 caseRoutes.post("/cases", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const b = await c.req.json();
-  const case_no = cleanString(b.case_no, 50);
-  const title = cleanString(b.title, MAX_NAME_LENGTH);
-  if (!case_no || !b.year || !title || !b.client_id) {
-    return c.json({ error: "\u0631\u0642\u0645 \u0627\u0644\u062F\u0639\u0648\u0649 \u0648\u0627\u0644\u0633\u0646\u0629 \u0648\u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u062F\u0639\u0648\u0649 \u0648\u0627\u0644\u0645\u0648\u0643\u0644 \u062D\u0642\u0648\u0644 \u0625\u062C\u0628\u0627\u0631\u064A\u0629" }, 400);
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const id = await CasesService.createCase(c.env.DB, body, user.id);
+    return c.json({ id });
+  } catch (err) {
+    return c.json({ error: err.message }, 400);
   }
-  const status = b.status && isAllowed(b.status, [...ALLOWED_CASE_STATUSES]) ? b.status : "\u0645\u062A\u062F\u0627\u0648\u0644\u0629";
-  const priority = b.priority && isAllowed(b.priority, [...ALLOWED_CASE_PRIORITIES]) ? b.priority : "\u0639\u0627\u062F\u064A\u0629";
-  const degree = b.degree && isAllowed(b.degree, [...ALLOWED_CASE_DEGREES]) ? b.degree : "\u0627\u0628\u062A\u062F\u0627\u0626\u064A";
-  const result = await c.env.DB.prepare(
-    `INSERT INTO cases (case_no, year, title, case_type_id, court_id, circuit, degree, status, priority, client_id, opposing_name, opposing_lawyer, lead_lawyer_id, subject, claim_value, currency, filing_date, next_action)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(
-    case_no,
-    Number(b.year),
-    title,
-    b.case_type_id ? Number(b.case_type_id) : null,
-    b.court_id ? Number(b.court_id) : null,
-    cleanString(b.circuit, 100),
-    degree,
-    status,
-    priority,
-    Number(b.client_id),
-    cleanString(b.opposing_name, MAX_NAME_LENGTH),
-    cleanString(b.opposing_lawyer, MAX_NAME_LENGTH),
-    b.lead_lawyer_id ? Number(b.lead_lawyer_id) : null,
-    cleanString(b.subject, MAX_TEXT_LENGTH),
-    Number(b.claim_value || 0),
-    b.currency || "EGP",
-    b.filing_date || null,
-    cleanString(b.next_action, MAX_TEXT_LENGTH)
-  ).run();
-  const id = result.meta.last_row_id;
-  if (b.lead_lawyer_id) {
-    await c.env.DB.prepare(`INSERT OR IGNORE INTO case_lawyers (case_id, user_id, role) VALUES (?, ?, '\u0631\u0626\u064A\u0633')`).bind(id, b.lead_lawyer_id).run();
-  }
-  await logActivity(c.env.DB, user.id, "case", id, "\u0625\u0646\u0634\u0627\u0621", `\u0642\u0636\u064A\u0629 \u062C\u062F\u064A\u062F\u0629 ${case_no} \u0644\u0633\u0646\u0629 ${b.year}`);
-  return c.json({ id });
 });
 caseRoutes.put("/cases/:id", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const id = c.req.param("id");
-  const existing = await c.env.DB.prepare(`SELECT * FROM cases WHERE id = ?`).bind(id).first();
-  if (!existing) return c.json({ error: "\u0627\u0644\u0642\u0636\u064A\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" }, 404);
-  const b = await c.req.json();
-  const case_no = b.case_no !== void 0 ? cleanString(b.case_no, 50) || existing.case_no : existing.case_no;
-  const year = b.year !== void 0 ? Number(b.year) : existing.year;
-  const title = b.title !== void 0 ? cleanString(b.title, MAX_NAME_LENGTH) || existing.title : existing.title;
-  const case_type_id = b.case_type_id !== void 0 ? b.case_type_id ? Number(b.case_type_id) : null : existing.case_type_id;
-  const court_id = b.court_id !== void 0 ? b.court_id ? Number(b.court_id) : null : existing.court_id;
-  const circuit = b.circuit !== void 0 ? cleanString(b.circuit, 100) : existing.circuit;
-  const degree = b.degree !== void 0 && isAllowed(b.degree, [...ALLOWED_CASE_DEGREES]) ? b.degree : existing.degree;
-  const status = b.status !== void 0 && isAllowed(b.status, [...ALLOWED_CASE_STATUSES]) ? b.status : existing.status;
-  const priority = b.priority !== void 0 && isAllowed(b.priority, [...ALLOWED_CASE_PRIORITIES]) ? b.priority : existing.priority;
-  const client_id = b.client_id !== void 0 ? Number(b.client_id) : existing.client_id;
-  const opposing_name = b.opposing_name !== void 0 ? cleanString(b.opposing_name, MAX_NAME_LENGTH) : existing.opposing_name;
-  const opposing_lawyer = b.opposing_lawyer !== void 0 ? cleanString(b.opposing_lawyer, MAX_NAME_LENGTH) : existing.opposing_lawyer;
-  const lead_lawyer_id = b.lead_lawyer_id !== void 0 ? b.lead_lawyer_id ? Number(b.lead_lawyer_id) : null : existing.lead_lawyer_id;
-  const subject = b.subject !== void 0 ? cleanString(b.subject, MAX_TEXT_LENGTH) : existing.subject;
-  const claim_value = b.claim_value !== void 0 ? Number(b.claim_value || 0) : existing.claim_value;
-  const currency = b.currency !== void 0 ? b.currency || "EGP" : existing.currency || "EGP";
-  const filing_date = b.filing_date !== void 0 ? b.filing_date : existing.filing_date;
-  const next_action = b.next_action !== void 0 ? cleanString(b.next_action, MAX_TEXT_LENGTH) : existing.next_action;
-  const outcome = b.outcome !== void 0 ? cleanString(b.outcome, MAX_TEXT_LENGTH) : existing.outcome;
-  const closed_at = b.closed_at !== void 0 ? b.closed_at : existing.closed_at;
-  await c.env.DB.prepare(
-    `UPDATE cases SET case_no=?, year=?, title=?, case_type_id=?, court_id=?, circuit=?, degree=?, status=?, priority=?, client_id=?, opposing_name=?, opposing_lawyer=?, lead_lawyer_id=?, subject=?, claim_value=?, currency=?, filing_date=?, next_action=?, outcome=?, closed_at=?, updated_at=datetime('now') WHERE id=?`
-  ).bind(case_no, year, title, case_type_id, court_id, circuit, degree, status, priority, client_id, opposing_name, opposing_lawyer, lead_lawyer_id, subject, claim_value, currency, filing_date, next_action, outcome, closed_at, id).run();
-  await logActivity(c.env.DB, user.id, "case", Number(id), "\u062A\u062D\u062F\u064A\u062B", `\u062A\u062D\u062F\u064A\u062B \u0627\u0644\u0642\u0636\u064A\u0629 ${case_no}`);
-  return c.json({ ok: true });
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    await CasesService.updateCase(c.env.DB, c.req.param("id"), body, user.id);
+    return c.json({ ok: true });
+  } catch (err) {
+    const status = err.message === "\u0627\u0644\u0642\u0636\u064A\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" ? 404 : 400;
+    return c.json({ error: err.message }, status);
+  }
 });
 caseRoutes.post("/cases/:id/lawyers", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const b = await c.req.json();
-  if (!b.user_id) return c.json({ error: "\u0627\u0644\u0645\u062D\u0627\u0645\u064A \u0645\u0637\u0644\u0648\u0628" }, 400);
-  await c.env.DB.prepare(`INSERT OR REPLACE INTO case_lawyers (case_id, user_id, role) VALUES (?, ?, ?)`).bind(c.req.param("id"), b.user_id, cleanString(b.role, 50) || "\u0645\u0633\u0627\u0639\u062F").run();
+  const body = await c.req.json().catch(() => ({}));
+  if (!body.user_id) return c.json({ error: "\u0627\u0644\u0645\u062D\u0627\u0645\u064A \u0645\u0637\u0644\u0648\u0628" }, 400);
+  await CasesService.assignLawyer(c.env.DB, c.req.param("id"), body.user_id, body.role);
   return c.json({ ok: true });
 });
 caseRoutes.get("/hearings", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const from = c.req.query("from") || "2000-01-01";
-  const to = c.req.query("to") || "2099-12-31";
-  const lawyer = c.req.query("lawyer");
-  const status = c.req.query("status");
-  let sql = `SELECT h.*, cs.case_no, cs.year, cs.title AS case_title, cs.priority, cl.name AS client_name, u.name AS lawyer_name, u.initials, u.color, co.name AS court_name
-    FROM hearings h
-    JOIN cases cs ON cs.id = h.case_id
-    JOIN clients cl ON cl.id = cs.client_id
-    LEFT JOIN users u ON u.id = h.lawyer_id
-    LEFT JOIN courts co ON co.id = h.court_id
-    WHERE h.hearing_date BETWEEN ? AND ?`;
-  const binds = [from, to];
-  if (lawyer) {
-    sql += ` AND h.lawyer_id = ?`;
-    binds.push(lawyer);
-  }
-  if (status && isAllowed(status, [...ALLOWED_HEARING_STATUSES])) {
-    sql += ` AND h.status = ?`;
-    binds.push(status);
-  }
-  sql += ` ORDER BY h.hearing_date, h.hearing_time LIMIT 250`;
-  const { results } = await c.env.DB.prepare(sql).bind(...binds).all();
-  return c.json(results || []);
+  const hearings = await CasesService.getHearings(c.env.DB, c.req.query());
+  return c.json(hearings);
 });
 caseRoutes.post("/hearings", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const b = await c.req.json();
-  if (!b.case_id || !b.hearing_date) {
-    return c.json({ error: "\u0627\u0644\u0642\u0636\u064A\u0629 \u0648\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062C\u0644\u0633\u0629 \u0645\u0637\u0644\u0648\u0628\u0627\u0646" }, 400);
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const id = await CasesService.scheduleHearing(c.env.DB, body, user.id);
+    return c.json({ id });
+  } catch (err) {
+    return c.json({ error: err.message }, 400);
   }
-  const status = b.status && isAllowed(b.status, [...ALLOWED_HEARING_STATUSES]) ? b.status : "\u0642\u0627\u062F\u0645\u0629";
-  const result = await c.env.DB.prepare(
-    `INSERT INTO hearings (case_id, hearing_date, hearing_time, court_id, circuit, type, purpose, lawyer_id, status, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(
-    Number(b.case_id),
-    b.hearing_date,
-    b.hearing_time || null,
-    b.court_id ? Number(b.court_id) : null,
-    cleanString(b.circuit, 100),
-    cleanString(b.type, 50) || "\u0645\u0631\u0627\u0641\u0639\u0629",
-    cleanString(b.purpose, MAX_TEXT_LENGTH),
-    b.lawyer_id ? Number(b.lawyer_id) : null,
-    status,
-    cleanString(b.notes, MAX_NOTE_LENGTH)
-  ).run();
-  const id = result.meta.last_row_id;
-  await logActivity(c.env.DB, user.id, "hearing", id, "\u062C\u062F\u0648\u0644\u0629", `\u062C\u0644\u0633\u0629 ${b.hearing_date}`);
-  return c.json({ id });
 });
 caseRoutes.put("/hearings/:id", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const id = c.req.param("id");
-  const existing = await c.env.DB.prepare(`SELECT * FROM hearings WHERE id = ?`).bind(id).first();
-  if (!existing) return c.json({ error: "\u0627\u0644\u062C\u0644\u0633\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" }, 404);
-  const b = await c.req.json();
-  const hearing_date = b.hearing_date !== void 0 ? b.hearing_date : existing.hearing_date;
-  const hearing_time = b.hearing_time !== void 0 ? b.hearing_time : existing.hearing_time;
-  const court_id = b.court_id !== void 0 ? b.court_id ? Number(b.court_id) : null : existing.court_id;
-  const circuit = b.circuit !== void 0 ? cleanString(b.circuit, 100) : existing.circuit;
-  const type = b.type !== void 0 ? cleanString(b.type, 50) : existing.type;
-  const purpose = b.purpose !== void 0 ? cleanString(b.purpose, MAX_TEXT_LENGTH) : existing.purpose;
-  const result = b.result !== void 0 ? cleanString(b.result, MAX_TEXT_LENGTH) : existing.result;
-  const next_date = b.next_date !== void 0 ? b.next_date : existing.next_date;
-  const lawyer_id = b.lawyer_id !== void 0 ? b.lawyer_id ? Number(b.lawyer_id) : null : existing.lawyer_id;
-  const status = b.status !== void 0 && isAllowed(b.status, [...ALLOWED_HEARING_STATUSES]) ? b.status : existing.status;
-  const notes = b.notes !== void 0 ? cleanString(b.notes, MAX_NOTE_LENGTH) : existing.notes;
-  await c.env.DB.prepare(
-    `UPDATE hearings SET hearing_date=?, hearing_time=?, court_id=?, circuit=?, type=?, purpose=?, result=?, next_date=?, lawyer_id=?, status=?, notes=? WHERE id=?`
-  ).bind(hearing_date, hearing_time, court_id, circuit, type, purpose, result, next_date, lawyer_id, status, notes, id).run();
-  return c.json({ ok: true });
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    await CasesService.updateHearing(c.env.DB, c.req.param("id"), body);
+    return c.json({ ok: true });
+  } catch (err) {
+    const status = err.message === "\u0627\u0644\u062C\u0644\u0633\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" ? 404 : 400;
+    return c.json({ error: err.message }, status);
+  }
 });
+
+// src/services/tasks.service.ts
+var TasksService = class {
+  /**
+   * Lists tasks with filtering by status, assignee, or mine flag
+   */
+  static async getTasks(db, filters = {}) {
+    const { status, assignee, mine, currentUserId } = filters;
+    let sql = `SELECT t.*, u.name AS assignee_name, u.initials, u.color, cs.title AS case_title, cs.case_no, cs.year, cl.name AS client_name
+      FROM tasks t
+      LEFT JOIN users u ON u.id = t.assignee_id
+      LEFT JOIN cases cs ON cs.id = t.case_id
+      LEFT JOIN clients cl ON cl.id = COALESCE(t.client_id, cs.client_id)
+      WHERE 1=1`;
+    const binds = [];
+    if (status) {
+      sql += ` AND t.status = ?`;
+      binds.push(status);
+    }
+    if (assignee) {
+      sql += ` AND t.assignee_id = ?`;
+      binds.push(assignee);
+    }
+    if (mine && currentUserId) {
+      sql += ` AND t.assignee_id = ?`;
+      binds.push(currentUserId);
+    }
+    sql += ` ORDER BY CASE t.status WHEN '\u062C\u0627\u0631\u064A\u0629' THEN 0 WHEN '\u0645\u0641\u062A\u0648\u062D\u0629' THEN 1 ELSE 2 END, CASE t.priority WHEN '\u0639\u0627\u062C\u0644\u0629' THEN 0 WHEN '\u0639\u0627\u0644\u064A\u0629' THEN 1 ELSE 2 END, t.due_date LIMIT 150`;
+    const { results } = await db.prepare(sql).bind(...binds).all();
+    return results || [];
+  }
+  /**
+   * Creates a new task assignment
+   */
+  static async createTask(db, data, currentUserId) {
+    const title = data.title?.trim();
+    if (!title) {
+      throw new Error("\u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u0645\u0647\u0645\u0629 \u0645\u0637\u0644\u0648\u0628");
+    }
+    const result = await db.prepare(
+      `INSERT INTO tasks (title, description, case_id, client_id, assignee_id, creator_id, due_date, due_time, priority, status, category)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      title,
+      data.description || null,
+      data.case_id ? Number(data.case_id) : null,
+      data.client_id ? Number(data.client_id) : null,
+      data.assignee_id ? Number(data.assignee_id) : null,
+      currentUserId,
+      data.due_date || null,
+      data.due_time || null,
+      data.priority || "\u0639\u0627\u062F\u064A\u0629",
+      data.status || "\u0645\u0641\u062A\u0648\u062D\u0629",
+      data.category || null
+    ).run();
+    return result.meta.last_row_id;
+  }
+  /**
+   * Updates task status, priority, due date, or assignee
+   */
+  static async updateTask(db, id, data) {
+    const existing = await db.prepare(`SELECT * FROM tasks WHERE id = ?`).bind(id).first();
+    if (!existing) {
+      throw new Error("\u0627\u0644\u0645\u0647\u0645\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629");
+    }
+    const title = data.title !== void 0 ? data.title?.trim() || existing.title : existing.title;
+    const description = data.description !== void 0 ? data.description : existing.description;
+    const case_id = data.case_id !== void 0 ? data.case_id ? Number(data.case_id) : null : existing.case_id;
+    const client_id = data.client_id !== void 0 ? data.client_id ? Number(data.client_id) : null : existing.client_id;
+    const assignee_id = data.assignee_id !== void 0 ? data.assignee_id ? Number(data.assignee_id) : null : existing.assignee_id;
+    const due_date = data.due_date !== void 0 ? data.due_date : existing.due_date;
+    const due_time = data.due_time !== void 0 ? data.due_time : existing.due_time;
+    const priority = data.priority !== void 0 ? data.priority : existing.priority;
+    const status = data.status !== void 0 ? data.status : existing.status;
+    const category = data.category !== void 0 ? data.category : existing.category;
+    const completed = status === "\u0645\u0643\u062A\u0645\u0644\u0629" ? existing.completed_at || (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ") : null;
+    await db.prepare(
+      `UPDATE tasks SET title=?, description=?, case_id=?, client_id=?, assignee_id=?, due_date=?, due_time=?, priority=?, status=?, category=?, completed_at=? WHERE id=?`
+    ).bind(title, description, case_id, client_id, assignee_id, due_date, due_time, priority, status, category, completed, id).run();
+    return true;
+  }
+};
 
 // src/routes/tasks.ts
 var taskRoutes = new Hono2();
 taskRoutes.get("/", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const { status, assignee, mine } = c.req.query();
-  let sql = `SELECT t.*, u.name AS assignee_name, u.initials, u.color, cs.title AS case_title, cs.case_no, cs.year, cl.name AS client_name
-    FROM tasks t
-    LEFT JOIN users u ON u.id = t.assignee_id
-    LEFT JOIN cases cs ON cs.id = t.case_id
-    LEFT JOIN clients cl ON cl.id = COALESCE(t.client_id, cs.client_id)
-    WHERE 1=1`;
-  const binds = [];
-  if (status) {
-    sql += ` AND t.status = ?`;
-    binds.push(status);
-  }
-  if (assignee) {
-    sql += ` AND t.assignee_id = ?`;
-    binds.push(assignee);
-  }
-  if (mine === "1") {
-    sql += ` AND t.assignee_id = ?`;
-    binds.push(user.id);
-  }
-  sql += ` ORDER BY CASE t.status WHEN '\u062C\u0627\u0631\u064A\u0629' THEN 0 WHEN '\u0645\u0641\u062A\u0648\u062D\u0629' THEN 1 ELSE 2 END, CASE t.priority WHEN '\u0639\u0627\u062C\u0644\u0629' THEN 0 WHEN '\u0639\u0627\u0644\u064A\u0629' THEN 1 ELSE 2 END, t.due_date LIMIT 150`;
-  const { results } = await c.env.DB.prepare(sql).bind(...binds).all();
-  return c.json(results || []);
+  const query = c.req.query();
+  const tasks = await TasksService.getTasks(c.env.DB, {
+    status: query.status,
+    assignee: query.assignee,
+    mine: query.mine === "1",
+    currentUserId: user.id
+  });
+  return c.json(tasks);
 });
 taskRoutes.post("/", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const b = await c.req.json();
-  if (!b.title?.trim()) return c.json({ error: "\u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u0645\u0647\u0645\u0629 \u0645\u0637\u0644\u0648\u0628" }, 400);
-  const result = await c.env.DB.prepare(
-    `INSERT INTO tasks (title, description, case_id, client_id, assignee_id, creator_id, due_date, due_time, priority, status, category)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(
-    b.title.trim(),
-    b.description || null,
-    b.case_id ? Number(b.case_id) : null,
-    b.client_id ? Number(b.client_id) : null,
-    b.assignee_id ? Number(b.assignee_id) : null,
-    user.id,
-    b.due_date || null,
-    b.due_time || null,
-    b.priority || "\u0639\u0627\u062F\u064A\u0629",
-    b.status || "\u0645\u0641\u062A\u0648\u062D\u0629",
-    b.category || null
-  ).run();
-  return c.json({ id: result.meta.last_row_id });
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const id = await TasksService.createTask(c.env.DB, body, user.id);
+    return c.json({ id });
+  } catch (err) {
+    return c.json({ error: err.message }, 400);
+  }
 });
 taskRoutes.put("/:id", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const id = c.req.param("id");
-  const existing = await c.env.DB.prepare(`SELECT * FROM tasks WHERE id = ?`).bind(id).first();
-  if (!existing) return c.json({ error: "\u0627\u0644\u0645\u0647\u0645\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" }, 404);
-  const b = await c.req.json();
-  const title = b.title !== void 0 ? b.title?.trim() || existing.title : existing.title;
-  const description = b.description !== void 0 ? b.description : existing.description;
-  const case_id = b.case_id !== void 0 ? b.case_id ? Number(b.case_id) : null : existing.case_id;
-  const client_id = b.client_id !== void 0 ? b.client_id ? Number(b.client_id) : null : existing.client_id;
-  const assignee_id = b.assignee_id !== void 0 ? b.assignee_id ? Number(b.assignee_id) : null : existing.assignee_id;
-  const due_date = b.due_date !== void 0 ? b.due_date : existing.due_date;
-  const due_time = b.due_time !== void 0 ? b.due_time : existing.due_time;
-  const priority = b.priority !== void 0 ? b.priority : existing.priority;
-  const status = b.status !== void 0 ? b.status : existing.status;
-  const category = b.category !== void 0 ? b.category : existing.category;
-  const completed = status === "\u0645\u0643\u062A\u0645\u0644\u0629" ? existing.completed_at || (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ") : null;
-  await c.env.DB.prepare(
-    `UPDATE tasks SET title=?, description=?, case_id=?, client_id=?, assignee_id=?, due_date=?, due_time=?, priority=?, status=?, category=?, completed_at=? WHERE id=?`
-  ).bind(title, description, case_id, client_id, assignee_id, due_date, due_time, priority, status, category, completed, id).run();
-  return c.json({ ok: true });
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    await TasksService.updateTask(c.env.DB, c.req.param("id"), body);
+    return c.json({ ok: true });
+  } catch (err) {
+    const status = err.message === "\u0627\u0644\u0645\u0647\u0645\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" ? 404 : 400;
+    return c.json({ error: err.message }, status);
+  }
 });
+
+// src/services/documents.service.ts
+var DocumentsService = class {
+  /**
+   * Lists electronic files and documents
+   */
+  static async getDocuments(db) {
+    const { results } = await db.prepare(
+      `SELECT d.*, cs.title AS case_title, cs.case_no, cs.year, cl.name AS client_name, u.name AS uploader
+       FROM documents d
+       LEFT JOIN cases cs ON cs.id=d.case_id
+       LEFT JOIN clients cl ON cl.id=COALESCE(d.client_id, cs.client_id)
+       LEFT JOIN users u ON u.id=d.uploaded_by
+       ORDER BY d.created_at DESC LIMIT 150`
+    ).all();
+    return results || [];
+  }
+  /**
+   * Creates a new document record
+   */
+  static async createDocument(db, data, currentUserId) {
+    const title = cleanString(data.title, MAX_NAME_LENGTH);
+    if (!title) {
+      throw new Error("\u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u0645\u0633\u062A\u0646\u062F \u0645\u0637\u0644\u0648\u0628");
+    }
+    const result = await db.prepare(
+      `INSERT INTO documents (case_id, client_id, title, doc_type, ref_no, date_issued, pages, notes, uploaded_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      data.case_id ? Number(data.case_id) : null,
+      data.client_id ? Number(data.client_id) : null,
+      title,
+      cleanString(data.doc_type, 50) || "\u0623\u062E\u0631\u0649",
+      cleanString(data.ref_no, 100),
+      data.date_issued || null,
+      data.pages ? Number(data.pages) : null,
+      cleanString(data.notes, MAX_NOTE_LENGTH),
+      currentUserId
+    ).run();
+    const id = result.meta.last_row_id;
+    await logActivity(db, currentUserId, "document", id, "\u0625\u0646\u0634\u0627\u0621", `\u0645\u0633\u062A\u0646\u062F \u062C\u062F\u064A\u062F: ${title}`);
+    return id;
+  }
+  /**
+   * Lists powers of attorney
+   */
+  static async getPoas(db) {
+    const { results } = await db.prepare(
+      `SELECT p.*, cl.name AS client_name, u.name AS lawyer_name, cs.title AS case_title
+       FROM powers_of_attorney p
+       JOIN clients cl ON cl.id=p.client_id
+       LEFT JOIN users u ON u.id=p.lawyer_id
+       LEFT JOIN cases cs ON cs.id=p.case_id
+       ORDER BY CASE p.status WHEN '\u0633\u0627\u0631\u064A' THEN 0 WHEN '\u0645\u0646\u062A\u0647\u064D' THEN 1 ELSE 2 END, p.expiry_date LIMIT 150`
+    ).all();
+    return results || [];
+  }
+  /**
+   * Registers a new Power of Attorney
+   */
+  static async createPoa(db, data, currentUserId) {
+    const poa_no = cleanString(data.poa_no, 100);
+    if (!poa_no || !data.client_id) {
+      throw new Error("\u0631\u0642\u0645 \u0627\u0644\u062A\u0648\u0643\u064A\u0644 \u0648\u0627\u0644\u0645\u0648\u0643\u0644 \u062D\u0642\u0648\u0644 \u0625\u062C\u0628\u0627\u0631\u064A\u0629");
+    }
+    const status = data.status && isAllowed(data.status, [...ALLOWED_POA_STATUSES]) ? data.status : "\u0633\u0627\u0631\u064A";
+    const result = await db.prepare(
+      `INSERT INTO powers_of_attorney (poa_no, client_id, case_id, lawyer_id, type, notary_office, issue_date, expiry_date, status, scope, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      poa_no,
+      Number(data.client_id),
+      data.case_id ? Number(data.case_id) : null,
+      data.lawyer_id ? Number(data.lawyer_id) : null,
+      cleanString(data.type, 50) || "\u0639\u0627\u0645 \u0642\u0636\u0627\u064A\u0627",
+      cleanString(data.notary_office, MAX_TEXT_LENGTH),
+      data.issue_date || null,
+      data.expiry_date || null,
+      status,
+      cleanString(data.scope, MAX_TEXT_LENGTH),
+      cleanString(data.notes, MAX_NOTE_LENGTH)
+    ).run();
+    const id = result.meta.last_row_id;
+    await logActivity(db, currentUserId, "poa", id, "\u0625\u0646\u0634\u0627\u0621", `\u062A\u0648\u0643\u064A\u0644 \u062C\u062F\u064A\u062F: ${poa_no}`);
+    return id;
+  }
+  /**
+   * Updates Power of Attorney
+   */
+  static async updatePoa(db, id, data, currentUserId) {
+    const existing = await db.prepare(`SELECT * FROM powers_of_attorney WHERE id = ?`).bind(id).first();
+    if (!existing) {
+      throw new Error("\u0627\u0644\u062A\u0648\u0643\u064A\u0644 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F");
+    }
+    const poa_no = data.poa_no !== void 0 ? cleanString(data.poa_no, 100) || existing.poa_no : existing.poa_no;
+    const client_id = data.client_id !== void 0 ? Number(data.client_id) : existing.client_id;
+    const case_id = data.case_id !== void 0 ? data.case_id ? Number(data.case_id) : null : existing.case_id;
+    const lawyer_id = data.lawyer_id !== void 0 ? data.lawyer_id ? Number(data.lawyer_id) : null : existing.lawyer_id;
+    const type = data.type !== void 0 ? cleanString(data.type, 50) || existing.type : existing.type;
+    const notary_office = data.notary_office !== void 0 ? cleanString(data.notary_office, MAX_TEXT_LENGTH) : existing.notary_office;
+    const issue_date = data.issue_date !== void 0 ? data.issue_date : existing.issue_date;
+    const expiry_date = data.expiry_date !== void 0 ? data.expiry_date : existing.expiry_date;
+    const status = data.status !== void 0 && isAllowed(data.status, [...ALLOWED_POA_STATUSES]) ? data.status : existing.status;
+    const scope = data.scope !== void 0 ? cleanString(data.scope, MAX_TEXT_LENGTH) : existing.scope;
+    const notes = data.notes !== void 0 ? cleanString(data.notes, MAX_NOTE_LENGTH) : existing.notes;
+    await db.prepare(
+      `UPDATE powers_of_attorney SET poa_no=?, client_id=?, case_id=?, lawyer_id=?, type=?, notary_office=?, issue_date=?, expiry_date=?, status=?, scope=?, notes=? WHERE id=?`
+    ).bind(poa_no, client_id, case_id, lawyer_id, type, notary_office, issue_date, expiry_date, status, scope, notes, id).run();
+    await logActivity(db, currentUserId, "poa", Number(id), "\u062A\u062D\u062F\u064A\u062B", `\u062A\u062D\u062F\u064A\u062B \u0627\u0644\u062A\u0648\u0643\u064A\u0644: ${poa_no}`);
+    return true;
+  }
+  /**
+   * Appends a memo or quick note
+   */
+  static async createNote(db, data, currentUserId) {
+    const content = cleanString(data.content, MAX_NOTE_LENGTH);
+    if (!content) {
+      throw new Error("\u0645\u062D\u062A\u0648\u0649 \u0627\u0644\u0645\u0644\u0627\u062D\u0638\u0629 \u0645\u0637\u0644\u0648\u0628");
+    }
+    const result = await db.prepare(
+      `INSERT INTO notes (case_id, client_id, user_id, content, pinned) VALUES (?, ?, ?, ?, ?)`
+    ).bind(
+      data.case_id ? Number(data.case_id) : null,
+      data.client_id ? Number(data.client_id) : null,
+      currentUserId,
+      content,
+      data.pinned ? 1 : 0
+    ).run();
+    return result.meta.last_row_id;
+  }
+};
 
 // src/routes/documents.ts
 var documentRoutes = new Hono2();
 documentRoutes.get("/documents", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const { results } = await c.env.DB.prepare(
-    `SELECT d.*, cs.title AS case_title, cs.case_no, cs.year, cl.name AS client_name, u.name AS uploader
-     FROM documents d
-     LEFT JOIN cases cs ON cs.id=d.case_id
-     LEFT JOIN clients cl ON cl.id=COALESCE(d.client_id, cs.client_id)
-     LEFT JOIN users u ON u.id=d.uploaded_by
-     ORDER BY d.created_at DESC LIMIT 150`
-  ).all();
-  return c.json(results || []);
+  const documents = await DocumentsService.getDocuments(c.env.DB);
+  return c.json(documents);
 });
 documentRoutes.post("/documents", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const b = await c.req.json();
-  const title = cleanString(b.title, MAX_NAME_LENGTH);
-  if (!title) return c.json({ error: "\u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u0645\u0633\u062A\u0646\u062F \u0645\u0637\u0644\u0648\u0628" }, 400);
-  const result = await c.env.DB.prepare(
-    `INSERT INTO documents (case_id, client_id, title, doc_type, ref_no, date_issued, pages, notes, uploaded_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(
-    b.case_id ? Number(b.case_id) : null,
-    b.client_id ? Number(b.client_id) : null,
-    title,
-    cleanString(b.doc_type, 50) || "\u0623\u062E\u0631\u0649",
-    cleanString(b.ref_no, 100),
-    b.date_issued || null,
-    b.pages ? Number(b.pages) : null,
-    cleanString(b.notes, MAX_NOTE_LENGTH),
-    user.id
-  ).run();
-  const id = result.meta.last_row_id;
-  await logActivity(c.env.DB, user.id, "document", id, "\u0625\u0646\u0634\u0627\u0621", `\u0645\u0633\u062A\u0646\u062F \u062C\u062F\u064A\u062F: ${title}`);
-  return c.json({ id });
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const id = await DocumentsService.createDocument(c.env.DB, body, user.id);
+    return c.json({ id });
+  } catch (err) {
+    return c.json({ error: err.message }, 400);
+  }
 });
 documentRoutes.get("/poas", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const { results } = await c.env.DB.prepare(
-    `SELECT p.*, cl.name AS client_name, u.name AS lawyer_name, cs.title AS case_title
-     FROM powers_of_attorney p
-     JOIN clients cl ON cl.id=p.client_id
-     LEFT JOIN users u ON u.id=p.lawyer_id
-     LEFT JOIN cases cs ON cs.id=p.case_id
-     ORDER BY CASE p.status WHEN '\u0633\u0627\u0631\u064A' THEN 0 WHEN '\u0645\u0646\u062A\u0647\u064D' THEN 1 ELSE 2 END, p.expiry_date LIMIT 150`
-  ).all();
-  return c.json(results || []);
+  const poas = await DocumentsService.getPoas(c.env.DB);
+  return c.json(poas);
 });
 documentRoutes.post("/poas", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const b = await c.req.json();
-  const poa_no = cleanString(b.poa_no, 100);
-  if (!poa_no || !b.client_id) {
-    return c.json({ error: "\u0631\u0642\u0645 \u0627\u0644\u062A\u0648\u0643\u064A\u0644 \u0648\u0627\u0644\u0645\u0648\u0643\u0644 \u062D\u0642\u0648\u0644 \u0625\u062C\u0628\u0627\u0631\u064A\u0629" }, 400);
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const id = await DocumentsService.createPoa(c.env.DB, body, user.id);
+    return c.json({ id });
+  } catch (err) {
+    return c.json({ error: err.message }, 400);
   }
-  const status = b.status && isAllowed(b.status, [...ALLOWED_POA_STATUSES]) ? b.status : "\u0633\u0627\u0631\u064A";
-  const result = await c.env.DB.prepare(
-    `INSERT INTO powers_of_attorney (poa_no, client_id, case_id, lawyer_id, type, notary_office, issue_date, expiry_date, status, scope, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(
-    poa_no,
-    Number(b.client_id),
-    b.case_id ? Number(b.case_id) : null,
-    b.lawyer_id ? Number(b.lawyer_id) : null,
-    cleanString(b.type, 50) || "\u0639\u0627\u0645 \u0642\u0636\u0627\u064A\u0627",
-    cleanString(b.notary_office, MAX_TEXT_LENGTH),
-    b.issue_date || null,
-    b.expiry_date || null,
-    status,
-    cleanString(b.scope, MAX_TEXT_LENGTH),
-    cleanString(b.notes, MAX_NOTE_LENGTH)
-  ).run();
-  const id = result.meta.last_row_id;
-  await logActivity(c.env.DB, user.id, "poa", id, "\u0625\u0646\u0634\u0627\u0621", `\u062A\u0648\u0643\u064A\u0644 \u062C\u062F\u064A\u062F: ${poa_no}`);
-  return c.json({ id });
 });
 documentRoutes.put("/poas/:id", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const id = c.req.param("id");
-  const existing = await c.env.DB.prepare(`SELECT * FROM powers_of_attorney WHERE id = ?`).bind(id).first();
-  if (!existing) return c.json({ error: "\u0627\u0644\u062A\u0648\u0643\u064A\u0644 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" }, 404);
-  const b = await c.req.json();
-  const poa_no = b.poa_no !== void 0 ? cleanString(b.poa_no, 100) || existing.poa_no : existing.poa_no;
-  const client_id = b.client_id !== void 0 ? Number(b.client_id) : existing.client_id;
-  const case_id = b.case_id !== void 0 ? b.case_id ? Number(b.case_id) : null : existing.case_id;
-  const lawyer_id = b.lawyer_id !== void 0 ? b.lawyer_id ? Number(b.lawyer_id) : null : existing.lawyer_id;
-  const type = b.type !== void 0 ? cleanString(b.type, 50) || existing.type : existing.type;
-  const notary_office = b.notary_office !== void 0 ? cleanString(b.notary_office, MAX_TEXT_LENGTH) : existing.notary_office;
-  const issue_date = b.issue_date !== void 0 ? b.issue_date : existing.issue_date;
-  const expiry_date = b.expiry_date !== void 0 ? b.expiry_date : existing.expiry_date;
-  const status = b.status !== void 0 && isAllowed(b.status, [...ALLOWED_POA_STATUSES]) ? b.status : existing.status;
-  const scope = b.scope !== void 0 ? cleanString(b.scope, MAX_TEXT_LENGTH) : existing.scope;
-  const notes = b.notes !== void 0 ? cleanString(b.notes, MAX_NOTE_LENGTH) : existing.notes;
-  await c.env.DB.prepare(
-    `UPDATE powers_of_attorney SET poa_no=?, client_id=?, case_id=?, lawyer_id=?, type=?, notary_office=?, issue_date=?, expiry_date=?, status=?, scope=?, notes=? WHERE id=?`
-  ).bind(poa_no, client_id, case_id, lawyer_id, type, notary_office, issue_date, expiry_date, status, scope, notes, id).run();
-  await logActivity(c.env.DB, user.id, "poa", Number(id), "\u062A\u062D\u062F\u064A\u062B", `\u062A\u062D\u062F\u064A\u062B \u0627\u0644\u062A\u0648\u0643\u064A\u0644: ${poa_no}`);
-  return c.json({ ok: true });
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    await DocumentsService.updatePoa(c.env.DB, c.req.param("id"), body, user.id);
+    return c.json({ ok: true });
+  } catch (err) {
+    const status = err.message === "\u0627\u0644\u062A\u0648\u0643\u064A\u0644 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" ? 404 : 400;
+    return c.json({ error: err.message }, status);
+  }
 });
 documentRoutes.post("/notes", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const b = await c.req.json();
-  const content = cleanString(b.content, MAX_NOTE_LENGTH);
-  if (!content) return c.json({ error: "\u0645\u062D\u062A\u0648\u0649 \u0627\u0644\u0645\u0644\u0627\u062D\u0638\u0629 \u0645\u0637\u0644\u0648\u0628" }, 400);
-  const result = await c.env.DB.prepare(
-    `INSERT INTO notes (case_id, client_id, user_id, content, pinned) VALUES (?, ?, ?, ?, ?)`
-  ).bind(
-    b.case_id ? Number(b.case_id) : null,
-    b.client_id ? Number(b.client_id) : null,
-    user.id,
-    content,
-    b.pinned ? 1 : 0
-  ).run();
-  return c.json({ id: result.meta.last_row_id });
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const id = await DocumentsService.createNote(c.env.DB, body, user.id);
+    return c.json({ id });
+  } catch (err) {
+    return c.json({ error: err.message }, 400);
+  }
 });
+
+// src/services/finance.service.ts
+var FinanceService = class {
+  /**
+   * Lists invoices with optional status filtering
+   */
+  static async getInvoices(db, status) {
+    let sql = `SELECT i.*, cl.name AS client_name, cs.title AS case_title, cs.case_no, cs.year
+      FROM invoices i JOIN clients cl ON cl.id=i.client_id LEFT JOIN cases cs ON cs.id=i.case_id WHERE 1=1`;
+    const binds = [];
+    if (status && isAllowed(status, [...ALLOWED_INVOICE_STATUSES])) {
+      sql += ` AND i.status = ?`;
+      binds.push(status);
+    }
+    sql += ` ORDER BY i.issue_date DESC LIMIT 150`;
+    const { results } = await db.prepare(sql).bind(...binds).all();
+    return results || [];
+  }
+  /**
+   * Fetches single invoice details with line items and historical payments
+   */
+  static async getInvoiceById(db, id) {
+    const inv = await db.prepare(
+      `SELECT i.*, cl.name AS client_name, cl.address, cl.tax_id, cl.phone, cl.email, cs.title AS case_title, cs.case_no, cs.year
+       FROM invoices i JOIN clients cl ON cl.id=i.client_id LEFT JOIN cases cs ON cs.id=i.case_id WHERE i.id=?`
+    ).bind(id).first();
+    if (!inv) return null;
+    const [items, pays] = await Promise.all([
+      db.prepare(`SELECT * FROM invoice_items WHERE invoice_id=?`).bind(id).all(),
+      db.prepare(`SELECT * FROM payments WHERE invoice_id=? ORDER BY paid_at`).bind(id).all()
+    ]);
+    return {
+      ...inv,
+      items: items.results || [],
+      payments: pays.results || []
+    };
+  }
+  /**
+   * Generates sequential invoice number for a given year (e.g. INV-2026-001)
+   */
+  static async generateInvoiceNumber(db, year) {
+    const last = await db.prepare(
+      `SELECT invoice_no FROM invoices WHERE invoice_no LIKE ? ORDER BY id DESC LIMIT 1`
+    ).bind(`INV-${year}-%`).first();
+    let seq = 1;
+    if (last?.invoice_no) {
+      const parts = String(last.invoice_no).split("-");
+      const parsed = parseInt(parts[parts.length - 1] || "0", 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        seq = parsed + 1;
+      }
+    }
+    return `INV-${year}-${String(seq).padStart(3, "0")}`;
+  }
+  /**
+   * Issues a new legal fee invoice with sequential numbering and line items
+   */
+  static async createInvoice(db, data, currentUserId) {
+    if (!data.client_id) {
+      throw new Error("\u0627\u0644\u0645\u0648\u0643\u0644 \u0645\u0637\u0644\u0648\u0628 \u0644\u0625\u0635\u062F\u0627\u0631 \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629");
+    }
+    const issueDate = data.issue_date || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    const year = new Date(issueDate).getFullYear() || (/* @__PURE__ */ new Date()).getFullYear();
+    const invoiceNo = await this.generateInvoiceNumber(db, year);
+    const items = Array.isArray(data.items) && data.items.length ? data.items : [{ description: data.desc || "\u0623\u062A\u0639\u0627\u0628 \u0645\u0647\u0646\u064A\u0629", qty: 1, unit_price: Number(data.amount || 0), amount: Number(data.amount || 0) }];
+    const subtotal = items.reduce((s, it) => s + Number(it.amount || (it.qty || 1) * (it.unit_price || 0)), 0);
+    const tax = data.tax !== void 0 ? Number(data.tax) : Math.round(subtotal * 0.14 * 100) / 100;
+    const discount = Number(data.discount || 0);
+    const total = Math.max(0, subtotal + tax - discount);
+    const invoiceStatus = data.status && isAllowed(data.status, [...ALLOWED_INVOICE_STATUSES]) ? data.status : "\u0635\u0627\u062F\u0631\u0629";
+    const result = await db.prepare(
+      `INSERT INTO invoices (invoice_no, client_id, case_id, issue_date, due_date, subtotal, tax, discount, total, paid, status, notes, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`
+    ).bind(
+      invoiceNo,
+      Number(data.client_id),
+      data.case_id ? Number(data.case_id) : null,
+      issueDate,
+      data.due_date || null,
+      subtotal,
+      tax,
+      discount,
+      total,
+      invoiceStatus,
+      cleanString(data.notes, MAX_NOTE_LENGTH),
+      currentUserId
+    ).run();
+    const id = result.meta.last_row_id;
+    if (items.length) {
+      const itemStatements = items.map((it) => {
+        const qty = Number(it.qty || 1);
+        const amount = Number(it.amount || qty * Number(it.unit_price || 0));
+        const unit_price = Number(it.unit_price !== void 0 ? it.unit_price : qty ? amount / qty : amount);
+        return db.prepare(
+          `INSERT INTO invoice_items (invoice_id, description, qty, unit_price, amount) VALUES (?, ?, ?, ?, ?)`
+        ).bind(id, cleanString(it.description, MAX_TEXT_LENGTH) || "\u0628\u0646\u062F \u0623\u062A\u0639\u0627\u0628", qty, unit_price, amount);
+      });
+      await db.batch(itemStatements);
+    }
+    await logActivity(db, currentUserId, "invoice", id, "\u0625\u0635\u062F\u0627\u0631", `\u0641\u0627\u062A\u0648\u0631\u0629 ${invoiceNo}`);
+    return { id, invoice_no: invoiceNo };
+  }
+  /**
+   * Updates invoice status, notes, or due date
+   */
+  static async updateInvoice(db, id, data) {
+    const existing = await db.prepare(`SELECT * FROM invoices WHERE id = ?`).bind(id).first();
+    if (!existing) {
+      throw new Error("\u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629");
+    }
+    const status = data.status !== void 0 && isAllowed(data.status, [...ALLOWED_INVOICE_STATUSES]) ? data.status : existing.status;
+    const notes = data.notes !== void 0 ? cleanString(data.notes, MAX_NOTE_LENGTH) : existing.notes;
+    const due_date = data.due_date !== void 0 ? data.due_date : existing.due_date;
+    await db.prepare(`UPDATE invoices SET status=?, notes=?, due_date=? WHERE id=?`).bind(status, notes, due_date, id).run();
+    return true;
+  }
+  /**
+   * Lists payments
+   */
+  static async getPayments(db) {
+    const { results } = await db.prepare(
+      `SELECT p.*, cl.name AS client_name, i.invoice_no
+       FROM payments p JOIN clients cl ON cl.id=p.client_id LEFT JOIN invoices i ON i.id=p.invoice_id
+       ORDER BY p.paid_at DESC LIMIT 100`
+    ).all();
+    return results || [];
+  }
+  /**
+   * Records payment and reconciles invoice status
+   */
+  static async recordPayment(db, data, currentUserId) {
+    const amount = Number(data.amount);
+    if (isNaN(amount) || amount <= 0) {
+      throw new Error("\u0645\u0628\u0644\u063A \u0627\u0644\u062A\u062D\u0635\u064A\u0644 \u064A\u062C\u0628 \u0623\u0646 \u064A\u0643\u0648\u0646 \u0631\u0642\u0645\u0627\u064B \u0645\u0648\u062C\u0628\u0627\u064B");
+    }
+    let clientId = data.client_id ? Number(data.client_id) : null;
+    let invoice = null;
+    if (data.invoice_id) {
+      invoice = await db.prepare(`SELECT * FROM invoices WHERE id=?`).bind(data.invoice_id).first();
+      if (!invoice) {
+        throw new Error("\u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0627\u0644\u0645\u062D\u062F\u062F\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629");
+      }
+      if (!clientId) {
+        clientId = invoice.client_id;
+      }
+    }
+    if (!clientId) {
+      throw new Error("\u0627\u0644\u0645\u0648\u0643\u0644 \u0645\u0637\u0644\u0648\u0628 \u0644\u0642\u064A\u062F \u0627\u0644\u062A\u062D\u0635\u064A\u0644");
+    }
+    const paidAt = data.paid_at || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    const result = await db.prepare(
+      `INSERT INTO payments (invoice_id, client_id, amount, method, paid_at, reference, notes, received_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      data.invoice_id ? Number(data.invoice_id) : null,
+      clientId,
+      amount,
+      cleanString(data.method, 30) || "\u062A\u062D\u0648\u064A\u0644",
+      paidAt,
+      cleanString(data.reference, 100),
+      cleanString(data.notes, MAX_NOTE_LENGTH),
+      currentUserId
+    ).run();
+    if (invoice) {
+      const paid = Math.round((Number(invoice.paid || 0) + amount) * 100) / 100;
+      const status = paid >= Number(invoice.total) - 0.5 ? "\u0645\u0633\u062F\u062F\u0629" : "\u062C\u0632\u0626\u064A";
+      await db.prepare(`UPDATE invoices SET paid=?, status=? WHERE id=?`).bind(paid, status, data.invoice_id).run();
+    }
+    await logActivity(db, currentUserId, "payment", result.meta.last_row_id, "\u062A\u062D\u0635\u064A\u0644", `\u062A\u062D\u0635\u064A\u0644 \u0645\u0628\u0644\u063A ${amount} \u062C.\u0645`);
+    return result.meta.last_row_id;
+  }
+  /**
+   * Lists expenses
+   */
+  static async getExpenses(db) {
+    const { results } = await db.prepare(
+      `SELECT e.*, cs.title AS case_title, cs.case_no, cs.year
+       FROM expenses e LEFT JOIN cases cs ON cs.id=e.case_id ORDER BY e.expense_date DESC LIMIT 100`
+    ).all();
+    return results || [];
+  }
+  /**
+   * Records a new expense
+   */
+  static async createExpense(db, data, currentUserId) {
+    const amount = Number(data.amount);
+    const title = cleanString(data.title, MAX_NAME_LENGTH);
+    if (!title || isNaN(amount) || amount <= 0) {
+      throw new Error("\u0628\u064A\u0627\u0646 \u0627\u0644\u0645\u0635\u0631\u0648\u0641 \u0648\u0642\u064A\u0645\u0629 \u0635\u0627\u0644\u062D\u0629 \u0645\u0637\u0644\u0648\u0628\u0627\u0646");
+    }
+    const expenseDate = data.expense_date || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    const result = await db.prepare(
+      `INSERT INTO expenses (case_id, title, category, amount, expense_date, billable, billed, vendor, notes, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      data.case_id ? Number(data.case_id) : null,
+      title,
+      cleanString(data.category, 50) || "\u0623\u062E\u0631\u0649",
+      amount,
+      expenseDate,
+      data.billable ? 1 : 0,
+      0,
+      cleanString(data.vendor, MAX_NAME_LENGTH),
+      cleanString(data.notes, MAX_NOTE_LENGTH),
+      currentUserId
+    ).run();
+    return result.meta.last_row_id;
+  }
+  /**
+   * Lists time entries
+   */
+  static async getTimeEntries(db) {
+    const { results } = await db.prepare(
+      `SELECT t.*, u.name AS user_name, cs.title AS case_title, cs.case_no, cs.year
+       FROM time_entries t JOIN users u ON u.id=t.user_id LEFT JOIN cases cs ON cs.id=t.case_id
+       ORDER BY t.work_date DESC LIMIT 150`
+    ).all();
+    return results || [];
+  }
+  /**
+   * Records billable time with RBAC authorization
+   */
+  static async logTime(db, data, currentUser) {
+    const hours = Number(data.hours);
+    if (isNaN(hours) || hours <= 0) {
+      throw new Error("\u0639\u062F\u062F \u0627\u0644\u0633\u0627\u0639\u0627\u062A \u064A\u062C\u0628 \u0623\u0646 \u064A\u0643\u0648\u0646 \u0631\u0642\u0645\u0627\u064B \u0645\u0648\u062C\u0628\u0627\u064B");
+    }
+    let targetUserId = currentUser.id;
+    if (data.user_id && Number(data.user_id) !== currentUser.id) {
+      const isPrivileged = ["managing_partner", "partner", "admin"].includes(currentUser.role);
+      if (!isPrivileged) {
+        throw new Error("\u063A\u064A\u0631 \u0645\u0635\u0631\u062D \u2014 \u0644\u0627 \u064A\u0645\u0643\u0646\u0643 \u062A\u0633\u062C\u064A\u0644 \u0633\u0627\u0639\u0627\u062A \u0644\u0645\u0633\u062A\u062E\u062F\u0645 \u0622\u062E\u0631");
+      }
+      targetUserId = Number(data.user_id);
+    }
+    const rate = data.rate !== void 0 ? Number(data.rate) : currentUser.hourly_rate || 0;
+    const workDate = data.work_date || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    const result = await db.prepare(
+      `INSERT INTO time_entries (user_id, case_id, work_date, hours, description, billable, billed, rate)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?)`
+    ).bind(
+      targetUserId,
+      data.case_id ? Number(data.case_id) : null,
+      workDate,
+      hours,
+      cleanString(data.description, MAX_TEXT_LENGTH),
+      data.billable === 0 ? 0 : 1,
+      rate
+    ).run();
+    return result.meta.last_row_id;
+  }
+  /**
+   * Lists contracts
+   */
+  static async getContracts(db) {
+    const { results } = await db.prepare(
+      `SELECT co.*, cl.name AS client_name FROM contracts co JOIN clients cl ON cl.id=co.client_id ORDER BY co.start_date DESC LIMIT 100`
+    ).all();
+    return results || [];
+  }
+  /**
+   * Registers a new retainer agreement / contract
+   */
+  static async createContract(db, data) {
+    const title = cleanString(data.title, MAX_NAME_LENGTH);
+    if (!title || !data.client_id) {
+      throw new Error("\u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u0639\u0642\u062F \u0648\u0627\u0644\u0645\u0648\u0643\u0644 \u0645\u0637\u0644\u0648\u0628\u0627\u0646");
+    }
+    const result = await db.prepare(
+      `INSERT INTO contracts (title, client_id, type, start_date, end_date, value, status, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      title,
+      Number(data.client_id),
+      cleanString(data.type, 50) || "\u0623\u062A\u0639\u0627\u0628",
+      data.start_date || null,
+      data.end_date || null,
+      Number(data.value || 0),
+      data.status || "\u0633\u0627\u0631\u064A",
+      cleanString(data.notes, MAX_NOTE_LENGTH)
+    ).run();
+    return result.meta.last_row_id;
+  }
+  /**
+   * Computes financial report metrics
+   */
+  static async getFinanceReport(db) {
+    const months = await db.prepare(`
+      SELECT strftime('%Y-%m', issue_date) AS m,
+        SUM(total) AS invoiced,
+        SUM(paid) AS paid
+      FROM invoices WHERE status != '\u0645\u0644\u063A\u0627\u0629' AND issue_date >= date('now','-11 months','start of month')
+      GROUP BY m ORDER BY m
+    `).all();
+    const byClient = await db.prepare(`
+      SELECT cl.name, SUM(i.total) AS invoiced, SUM(i.paid) AS paid, SUM(i.total-i.paid) AS due
+      FROM invoices i JOIN clients cl ON cl.id=i.client_id WHERE i.status != '\u0645\u0644\u063A\u0627\u0629'
+      GROUP BY cl.id ORDER BY due DESC LIMIT 8
+    `).all();
+    const unbilled = await db.prepare(`
+      SELECT COALESCE(SUM(hours*rate),0) AS time_value,
+        (SELECT COALESCE(SUM(amount),0) FROM expenses WHERE billable=1 AND billed=0) AS exp_value
+      FROM time_entries WHERE billable=1 AND billed=0
+    `).first();
+    return {
+      months: months.results || [],
+      by_client: byClient.results || [],
+      unbilled
+    };
+  }
+};
 
 // src/routes/finance.ts
 var financeRoutes = new Hono2();
 financeRoutes.get("/invoices", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const status = c.req.query("status");
-  let sql = `SELECT i.*, cl.name AS client_name, cs.title AS case_title, cs.case_no, cs.year
-    FROM invoices i JOIN clients cl ON cl.id=i.client_id LEFT JOIN cases cs ON cs.id=i.case_id WHERE 1=1`;
-  const binds = [];
-  if (status && isAllowed(status, [...ALLOWED_INVOICE_STATUSES])) {
-    sql += ` AND i.status = ?`;
-    binds.push(status);
-  }
-  sql += ` ORDER BY i.issue_date DESC LIMIT 150`;
-  const { results } = await c.env.DB.prepare(sql).bind(...binds).all();
-  return c.json(results || []);
+  const invoices = await FinanceService.getInvoices(c.env.DB, c.req.query("status"));
+  return c.json(invoices);
 });
 financeRoutes.get("/invoices/:id", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const id = c.req.param("id");
-  const inv = await c.env.DB.prepare(
-    `SELECT i.*, cl.name AS client_name, cl.address, cl.tax_id, cl.phone, cl.email, cs.title AS case_title, cs.case_no, cs.year
-     FROM invoices i JOIN clients cl ON cl.id=i.client_id LEFT JOIN cases cs ON cs.id=i.case_id WHERE i.id=?`
-  ).bind(id).first();
-  if (!inv) return c.json({ error: "\u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" }, 404);
-  const [items, pays] = await Promise.all([
-    c.env.DB.prepare(`SELECT * FROM invoice_items WHERE invoice_id=?`).bind(id).all(),
-    c.env.DB.prepare(`SELECT * FROM payments WHERE invoice_id=? ORDER BY paid_at`).bind(id).all()
-  ]);
-  return c.json({
-    ...inv,
-    items: items.results || [],
-    payments: pays.results || []
-  });
+  const invoice = await FinanceService.getInvoiceById(c.env.DB, c.req.param("id"));
+  if (!invoice) return c.json({ error: "\u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" }, 404);
+  return c.json(invoice);
 });
 financeRoutes.post("/invoices", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const b = await c.req.json();
-  if (!b.client_id) return c.json({ error: "\u0627\u0644\u0645\u0648\u0643\u0644 \u0645\u0637\u0644\u0648\u0628 \u0644\u0625\u0635\u062F\u0627\u0631 \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629" }, 400);
-  const issueDate = b.issue_date || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const year = new Date(issueDate).getFullYear() || (/* @__PURE__ */ new Date()).getFullYear();
-  const last = await c.env.DB.prepare(
-    `SELECT invoice_no FROM invoices WHERE invoice_no LIKE ? ORDER BY id DESC LIMIT 1`
-  ).bind(`INV-${year}-%`).first();
-  let seq = 1;
-  if (last?.invoice_no) {
-    seq = parseInt(String(last.invoice_no).split("-").pop() || "0", 10) + 1;
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const result = await FinanceService.createInvoice(c.env.DB, body, user.id);
+    return c.json(result);
+  } catch (err) {
+    return c.json({ error: err.message }, 400);
   }
-  const no = `INV-${year}-${String(seq).padStart(3, "0")}`;
-  const items = Array.isArray(b.items) && b.items.length ? b.items : [{ description: "\u0623\u062A\u0639\u0627\u0628 \u0645\u0647\u0646\u064A\u0629", qty: 1, unit_price: Number(b.amount || 0), amount: Number(b.amount || 0) }];
-  const subtotal = items.reduce((s, it) => s + Number(it.amount || (it.qty || 1) * (it.unit_price || 0)), 0);
-  const tax = b.tax !== void 0 ? Number(b.tax) : Math.round(subtotal * 0.14 * 100) / 100;
-  const discount = Number(b.discount || 0);
-  const total = Math.max(0, subtotal + tax - discount);
-  const invoiceStatus = b.status && isAllowed(b.status, [...ALLOWED_INVOICE_STATUSES]) ? b.status : "\u0635\u0627\u062F\u0631\u0629";
-  const result = await c.env.DB.prepare(
-    `INSERT INTO invoices (invoice_no, client_id, case_id, issue_date, due_date, subtotal, tax, discount, total, paid, status, notes, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`
-  ).bind(
-    no,
-    Number(b.client_id),
-    b.case_id ? Number(b.case_id) : null,
-    issueDate,
-    b.due_date || null,
-    subtotal,
-    tax,
-    discount,
-    total,
-    invoiceStatus,
-    cleanString(b.notes, MAX_NOTE_LENGTH),
-    user.id
-  ).run();
-  const id = result.meta.last_row_id;
-  if (items.length) {
-    const itemStatements = items.map((it) => {
-      const qty = Number(it.qty || 1);
-      const amount = Number(it.amount || qty * Number(it.unit_price || 0));
-      const unit_price = Number(it.unit_price !== void 0 ? it.unit_price : qty ? amount / qty : amount);
-      return c.env.DB.prepare(
-        `INSERT INTO invoice_items (invoice_id, description, qty, unit_price, amount) VALUES (?, ?, ?, ?, ?)`
-      ).bind(id, cleanString(it.description, MAX_TEXT_LENGTH) || "\u0628\u0646\u062F \u0623\u062A\u0639\u0627\u0628", qty, unit_price, amount);
-    });
-    await c.env.DB.batch(itemStatements);
-  }
-  await logActivity(c.env.DB, user.id, "invoice", id, "\u0625\u0635\u062F\u0627\u0631", `\u0641\u0627\u062A\u0648\u0631\u0629 ${no}`);
-  return c.json({ id, invoice_no: no });
 });
 financeRoutes.put("/invoices/:id", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const id = c.req.param("id");
-  const existing = await c.env.DB.prepare(`SELECT * FROM invoices WHERE id = ?`).bind(id).first();
-  if (!existing) return c.json({ error: "\u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" }, 404);
-  const b = await c.req.json();
-  const status = b.status !== void 0 && isAllowed(b.status, [...ALLOWED_INVOICE_STATUSES]) ? b.status : existing.status;
-  const notes = b.notes !== void 0 ? cleanString(b.notes, MAX_NOTE_LENGTH) : existing.notes;
-  const due_date = b.due_date !== void 0 ? b.due_date : existing.due_date;
-  await c.env.DB.prepare(`UPDATE invoices SET status=?, notes=?, due_date=? WHERE id=?`).bind(status, notes, due_date, id).run();
-  return c.json({ ok: true });
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    await FinanceService.updateInvoice(c.env.DB, c.req.param("id"), body);
+    return c.json({ ok: true });
+  } catch (err) {
+    const status = err.message === "\u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" ? 404 : 400;
+    return c.json({ error: err.message }, status);
+  }
 });
 financeRoutes.get("/payments", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const { results } = await c.env.DB.prepare(
-    `SELECT p.*, cl.name AS client_name, i.invoice_no
-     FROM payments p JOIN clients cl ON cl.id=p.client_id LEFT JOIN invoices i ON i.id=p.invoice_id
-     ORDER BY p.paid_at DESC LIMIT 100`
-  ).all();
-  return c.json(results || []);
+  const payments = await FinanceService.getPayments(c.env.DB);
+  return c.json(payments);
 });
 financeRoutes.post("/payments", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const b = await c.req.json();
-  const amount = Number(b.amount);
-  if (isNaN(amount) || amount <= 0) {
-    return c.json({ error: "\u0645\u0628\u0644\u063A \u0627\u0644\u062A\u062D\u0635\u064A\u0644 \u064A\u062C\u0628 \u0623\u0646 \u064A\u0643\u0648\u0646 \u0631\u0642\u0645\u0627\u064B \u0645\u0648\u062C\u0628\u0627\u064B" }, 400);
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const id = await FinanceService.recordPayment(c.env.DB, body, user.id);
+    return c.json({ id });
+  } catch (err) {
+    return c.json({ error: err.message }, 400);
   }
-  let clientId = b.client_id ? Number(b.client_id) : null;
-  let invoice = null;
-  if (b.invoice_id) {
-    invoice = await c.env.DB.prepare(`SELECT * FROM invoices WHERE id=?`).bind(b.invoice_id).first();
-    if (invoice && !clientId) {
-      clientId = invoice.client_id;
-    }
-  }
-  if (!clientId) {
-    return c.json({ error: "\u0627\u0644\u0645\u0648\u0643\u0644 \u0645\u0637\u0644\u0648\u0628 \u0644\u0642\u064A\u062F \u0627\u0644\u062A\u062D\u0635\u064A\u0644" }, 400);
-  }
-  const paidAt = b.paid_at || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const result = await c.env.DB.prepare(
-    `INSERT INTO payments (invoice_id, client_id, amount, method, paid_at, reference, notes, received_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(
-    b.invoice_id ? Number(b.invoice_id) : null,
-    clientId,
-    amount,
-    cleanString(b.method, 30) || "\u062A\u062D\u0648\u064A\u0644",
-    paidAt,
-    cleanString(b.reference, 100),
-    cleanString(b.notes, MAX_NOTE_LENGTH),
-    user.id
-  ).run();
-  if (invoice) {
-    const paid = Number(invoice.paid || 0) + amount;
-    const status = paid >= Number(invoice.total) - 0.5 ? "\u0645\u0633\u062F\u062F\u0629" : "\u062C\u0632\u0626\u064A";
-    await c.env.DB.prepare(`UPDATE invoices SET paid=?, status=? WHERE id=?`).bind(paid, status, b.invoice_id).run();
-  }
-  await logActivity(c.env.DB, user.id, "payment", result.meta.last_row_id, "\u062A\u062D\u0635\u064A\u0644", `\u062A\u062D\u0635\u064A\u0644 \u0645\u0628\u0644\u063A ${amount} \u062C.\u0645`);
-  return c.json({ id: result.meta.last_row_id });
 });
 financeRoutes.get("/expenses", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const { results } = await c.env.DB.prepare(
-    `SELECT e.*, cs.title AS case_title, cs.case_no, cs.year
-     FROM expenses e LEFT JOIN cases cs ON cs.id=e.case_id ORDER BY e.expense_date DESC LIMIT 100`
-  ).all();
-  return c.json(results || []);
+  const expenses = await FinanceService.getExpenses(c.env.DB);
+  return c.json(expenses);
 });
 financeRoutes.post("/expenses", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const b = await c.req.json();
-  const amount = Number(b.amount);
-  const title = cleanString(b.title, MAX_NAME_LENGTH);
-  if (!title || isNaN(amount) || amount <= 0) {
-    return c.json({ error: "\u0628\u064A\u0627\u0646 \u0627\u0644\u0645\u0635\u0631\u0648\u0641 \u0648\u0642\u064A\u0645\u0629 \u0635\u0627\u0644\u062D\u0629 \u0645\u0637\u0644\u0648\u0628\u0627\u0646" }, 400);
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const id = await FinanceService.createExpense(c.env.DB, body, user.id);
+    return c.json({ id });
+  } catch (err) {
+    return c.json({ error: err.message }, 400);
   }
-  const expenseDate = b.expense_date || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const result = await c.env.DB.prepare(
-    `INSERT INTO expenses (case_id, title, category, amount, expense_date, billable, billed, vendor, notes, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(
-    b.case_id ? Number(b.case_id) : null,
-    title,
-    cleanString(b.category, 50) || "\u0623\u062E\u0631\u0649",
-    amount,
-    expenseDate,
-    b.billable ? 1 : 0,
-    0,
-    cleanString(b.vendor, MAX_NAME_LENGTH),
-    cleanString(b.notes, MAX_NOTE_LENGTH),
-    user.id
-  ).run();
-  return c.json({ id: result.meta.last_row_id });
 });
 financeRoutes.get("/time", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const { results } = await c.env.DB.prepare(
-    `SELECT t.*, u.name AS user_name, cs.title AS case_title, cs.case_no, cs.year
-     FROM time_entries t JOIN users u ON u.id=t.user_id LEFT JOIN cases cs ON cs.id=t.case_id
-     ORDER BY t.work_date DESC LIMIT 150`
-  ).all();
-  return c.json(results || []);
+  const timeEntries = await FinanceService.getTimeEntries(c.env.DB);
+  return c.json(timeEntries);
 });
 financeRoutes.post("/time", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const b = await c.req.json();
-  const hours = Number(b.hours);
-  if (isNaN(hours) || hours <= 0) {
-    return c.json({ error: "\u0639\u062F\u062F \u0627\u0644\u0633\u0627\u0639\u0627\u062A \u064A\u062C\u0628 \u0623\u0646 \u064A\u0643\u0648\u0646 \u0631\u0642\u0645\u0627\u064B \u0645\u0648\u062C\u0628\u0627\u064B" }, 400);
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const id = await FinanceService.logTime(c.env.DB, body, user);
+    return c.json({ id });
+  } catch (err) {
+    const status = err.message.includes("\u063A\u064A\u0631 \u0645\u0635\u0631\u062D") ? 403 : 400;
+    return c.json({ error: err.message }, status);
   }
-  const currentUser = user;
-  let targetUserId = currentUser.id;
-  if (b.user_id && Number(b.user_id) !== currentUser.id) {
-    const isPrivileged = ["managing_partner", "partner", "admin"].includes(currentUser.role);
-    if (!isPrivileged) {
-      return c.json({ error: "\u063A\u064A\u0631 \u0645\u0635\u0631\u062D \u2014 \u0644\u0627 \u064A\u0645\u0643\u0646\u0643 \u062A\u0633\u062C\u064A\u0644 \u0633\u0627\u0639\u0627\u062A \u0644\u0645\u0633\u062A\u062E\u062F\u0645 \u0622\u062E\u0631" }, 403);
-    }
-    targetUserId = Number(b.user_id);
-  }
-  const rate = b.rate !== void 0 ? Number(b.rate) : currentUser.hourly_rate || 0;
-  const workDate = b.work_date || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const result = await c.env.DB.prepare(
-    `INSERT INTO time_entries (user_id, case_id, work_date, hours, description, billable, billed, rate)
-     VALUES (?, ?, ?, ?, ?, ?, 0, ?)`
-  ).bind(
-    targetUserId,
-    b.case_id ? Number(b.case_id) : null,
-    workDate,
-    hours,
-    cleanString(b.description, MAX_TEXT_LENGTH),
-    b.billable === 0 ? 0 : 1,
-    rate
-  ).run();
-  return c.json({ id: result.meta.last_row_id });
 });
 financeRoutes.get("/contracts", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const { results } = await c.env.DB.prepare(
-    `SELECT co.*, cl.name AS client_name FROM contracts co JOIN clients cl ON cl.id=co.client_id ORDER BY co.start_date DESC LIMIT 100`
-  ).all();
-  return c.json(results || []);
+  const contracts = await FinanceService.getContracts(c.env.DB);
+  return c.json(contracts);
 });
 financeRoutes.post("/contracts", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const b = await c.req.json();
-  const title = cleanString(b.title, MAX_NAME_LENGTH);
-  if (!title || !b.client_id) {
-    return c.json({ error: "\u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u0639\u0642\u062F \u0648\u0627\u0644\u0645\u0648\u0643\u0644 \u0645\u0637\u0644\u0648\u0628\u0627\u0646" }, 400);
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const id = await FinanceService.createContract(c.env.DB, body);
+    return c.json({ id });
+  } catch (err) {
+    return c.json({ error: err.message }, 400);
   }
-  const result = await c.env.DB.prepare(
-    `INSERT INTO contracts (title, client_id, type, start_date, end_date, value, status, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(
-    title,
-    Number(b.client_id),
-    cleanString(b.type, 50) || "\u0623\u062A\u0639\u0627\u0628",
-    b.start_date || null,
-    b.end_date || null,
-    Number(b.value || 0),
-    b.status || "\u0633\u0627\u0631\u064A",
-    cleanString(b.notes, MAX_NOTE_LENGTH)
-  ).run();
-  return c.json({ id: result.meta.last_row_id });
 });
 financeRoutes.get("/reports/finance", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const months = await c.env.DB.prepare(`
-    SELECT strftime('%Y-%m', issue_date) AS m,
-      SUM(total) AS invoiced,
-      SUM(paid) AS paid
-    FROM invoices WHERE status != '\u0645\u0644\u063A\u0627\u0629' AND issue_date >= date('now','-11 months','start of month')
-    GROUP BY m ORDER BY m
-  `).all();
-  const byClient = await c.env.DB.prepare(`
-    SELECT cl.name, SUM(i.total) AS invoiced, SUM(i.paid) AS paid, SUM(i.total-i.paid) AS due
-    FROM invoices i JOIN clients cl ON cl.id=i.client_id WHERE i.status != '\u0645\u0644\u063A\u0627\u0629'
-    GROUP BY cl.id ORDER BY due DESC LIMIT 8
-  `).all();
-  const unbilled = await c.env.DB.prepare(`
-    SELECT COALESCE(SUM(hours*rate),0) AS time_value,
-      (SELECT COALESCE(SUM(amount),0) FROM expenses WHERE billable=1 AND billed=0) AS exp_value
-    FROM time_entries WHERE billable=1 AND billed=0
-  `).first();
-  return c.json({
-    months: months.results || [],
-    by_client: byClient.results || [],
-    unbilled
-  });
+  const report = await FinanceService.getFinanceReport(c.env.DB);
+  return c.json(report);
 });
 
 // src/views/layout.ts
@@ -4692,75 +5187,80 @@ var SEED_SQL = "-- \u0628\u064A\u0627\u0646\u0627\u062A \u062A\u062C\u0631\u064A
 
 // src/utils/d1-sqlite.ts
 var cachedAdapter = null;
-function getFallbackD1() {
-  if (cachedAdapter) return cachedAdapter;
+var PreparedStatement = class _PreparedStatement {
+  db;
+  sql;
+  binds = [];
+  constructor(db, sql) {
+    this.db = db;
+    this.sql = sql;
+  }
+  bind(...args) {
+    const stmt = new _PreparedStatement(this.db, this.sql);
+    stmt.binds = args.map((a) => a === void 0 ? null : a);
+    return stmt;
+  }
+  async first() {
+    const stmt = this.db.prepare(this.sql);
+    const row = stmt.get(...this.binds);
+    return row || null;
+  }
+  async all() {
+    const stmt = this.db.prepare(this.sql);
+    const results = stmt.all(...this.binds);
+    return { results, success: true, meta: {} };
+  }
+  async run() {
+    const stmt = this.db.prepare(this.sql);
+    const res = stmt.run(...this.binds);
+    return {
+      success: true,
+      meta: {
+        last_row_id: Number(res.lastInsertRowid || 0),
+        changes: Number(res.changes || 0)
+      }
+    };
+  }
+};
+function createSqliteD1(dbPath = ":memory:", seed = true) {
   try {
     const g = globalThis;
-    const req = g.require || (typeof __require !== "undefined" ? __require : null);
-    if (!req) return null;
     let DatabaseSync = null;
-    try {
-      const sqlite = req("node:sqlite");
-      DatabaseSync = sqlite?.DatabaseSync;
-    } catch {
-      return null;
+    if (g.process?.getBuiltinModule) {
+      DatabaseSync = g.process.getBuiltinModule("node:sqlite")?.DatabaseSync;
+    }
+    if (!DatabaseSync) {
+      const req = g.require || (typeof __require !== "undefined" ? __require : null);
+      if (req) {
+        DatabaseSync = req("node:sqlite")?.DatabaseSync;
+      }
     }
     if (!DatabaseSync) return null;
-    const dbPath = globalThis.process?.env?.SQLITE_PATH || ":memory:";
     const rawDb = new DatabaseSync(dbPath);
     if (SCHEMA_SQL) rawDb.exec(SCHEMA_SQL);
-    if (SEED_SQL) rawDb.exec(SEED_SQL);
-    class PreparedStatement {
-      db;
-      sql;
-      binds = [];
-      constructor(db, sql) {
-        this.db = db;
-        this.sql = sql;
-      }
-      bind(...args) {
-        const stmt = new PreparedStatement(this.db, this.sql);
-        stmt.binds = args.map((a) => a === void 0 ? null : a);
-        return stmt;
-      }
-      async first() {
-        const stmt = this.db.prepare(this.sql);
-        const row = stmt.get(...this.binds);
-        return row || null;
-      }
-      async all() {
-        const stmt = this.db.prepare(this.sql);
-        const results = stmt.all(...this.binds);
-        return { results, success: true, meta: {} };
-      }
-      async run() {
-        const stmt = this.db.prepare(this.sql);
-        const res = stmt.run(...this.binds);
-        return {
-          success: true,
-          meta: {
-            last_row_id: Number(res.lastInsertRowid || 0),
-            changes: Number(res.changes || 0)
-          }
-        };
-      }
-    }
-    cachedAdapter = {
+    if (seed && SEED_SQL) rawDb.exec(SEED_SQL);
+    return {
       prepare(sql) {
         return new PreparedStatement(rawDb, sql);
       },
       async batch(statements) {
         return Promise.all(statements.map((s) => s.run()));
-      }
+      },
+      _raw: rawDb
     };
-    return cachedAdapter;
   } catch (err) {
-    console.error("Fallback SQLite error:", err);
+    console.error("Fallback SQLite creation error:", err);
     return null;
   }
 }
+function getFallbackD1() {
+  if (cachedAdapter) return cachedAdapter;
+  const dbPath = globalThis.process?.env?.SQLITE_PATH || ":memory:";
+  cachedAdapter = createSqliteD1(dbPath, true);
+  return cachedAdapter;
+}
 
-// src/index.tsx
+// src/app.ts
 var app = new Hono2();
 app.use("*", async (c, next) => {
   if (!c.env?.DB) {
@@ -4803,7 +5303,10 @@ app.notFound((c) => {
   }
   return c.html(renderAppLayout());
 });
-var src_default = app;
+var app_default = app;
+
+// src/index.tsx
+var src_default = app_default;
 
 // api/entry.ts
 var config = {

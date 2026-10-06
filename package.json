@@ -11,7 +11,7 @@
     "db:seed": "wrangler d1 execute webapp-production --local --file=./seed.sql",
     "db:reset": "node -e \"const fs=require('fs');fs.rmSync('.wrangler/state/v3/d1',{recursive:true,force:true})\" && npm run db:migrate:local && npm run db:seed",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/*.test.mjs"
+    "test": "tsx --test \"test/**/*.test.mjs\""
   },
   "engines": {
     "node": ">=22.0.0"
@@ -24,6 +24,7 @@
     "@hono/vite-build": "^1.11.1",
     "@hono/vite-dev-server": "^0.26.1",
     "@types/node": "^26.6.4",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.1.4",
     "wrangler": "^4.110.0"

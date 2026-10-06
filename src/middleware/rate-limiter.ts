@@ -37,3 +37,15 @@ export function checkRateLimit(key: string): boolean {
   record.count++
   return true
 }
+
+/**
+ * Resets rate limit for a key (or clears all if no key provided).
+ * Useful for tests and administrative resets.
+ */
+export function resetRateLimit(key?: string): void {
+  if (key) {
+    rateLimitMap.delete(key)
+  } else {
+    rateLimitMap.clear()
+  }
+}

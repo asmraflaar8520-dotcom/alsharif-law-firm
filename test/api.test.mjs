@@ -1,7 +1,20 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import app from '../src/app.ts'
 
 const BASE_URL = process.env.TEST_URL || 'http://127.0.0.1:3000'
+
+// Transparent in-memory fallback: route to app.request when external server is not running
+if (!process.env.TEST_URL) {
+  const nativeFetch = globalThis.fetch
+  globalThis.fetch = async (url, init) => {
+    if (typeof url === 'string' && url.startsWith(BASE_URL)) {
+      const path = url.slice(BASE_URL.length)
+      return app.request(path, init)
+    }
+    return nativeFetch(url, init)
+  }
+}
 
 test('Law Office Web Application Integration & Security Test Suite', async (t) => {
   let authCookie = ''

@@ -100,3 +100,17 @@ export async function verifyPassword(password: string, stored: string): Promise<
   }
   return diff === 0
 }
+
+/**
+ * Generates a cryptographically secure random alphanumeric password
+ */
+export function generateRandomPassword(length: number = 16): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*'
+  const bytes = new Uint8Array(length)
+  crypto.getRandomValues(bytes)
+  let result = ''
+  for (let i = 0; i < length; i++) {
+    result += chars[bytes[i] % chars.length]
+  }
+  return result
+}
