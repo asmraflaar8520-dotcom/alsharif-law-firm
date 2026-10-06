@@ -44,6 +44,7 @@ export const corsMiddleware: MiddlewareHandler = cors({
         u.hostname === 'localhost' ||
         u.hostname === '127.0.0.1' ||
         u.hostname.endsWith('.pages.dev') ||
+        u.hostname.endsWith('.vercel.app') ||
         u.hostname === 'alsharif.law'
       ) {
         return origin

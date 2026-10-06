@@ -3101,7 +3101,7 @@ var corsMiddleware = cors({
     if (!origin) return origin;
     try {
       const u = new URL(origin);
-      if (u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname.endsWith(".pages.dev") || u.hostname === "alsharif.law") {
+      if (u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname.endsWith(".pages.dev") || u.hostname.endsWith(".vercel.app") || u.hostname === "alsharif.law") {
         return origin;
       }
     } catch {
