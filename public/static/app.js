@@ -250,17 +250,11 @@ function loginView() {
           <h2 class="text-center font-amiri text-2xl md:text-3xl text-navy-900 mb-1">دخول المكتب</h2>
           <p class="text-center text-xs md:text-sm text-navy-700/60 mb-6 md:mb-8">للمحامين والشركاء والإدارة فقط</p>
           <label class="block text-sm mb-1 font-semibold">البريد الإلكتروني</label>
-          <input id="login-email" name="email" type="email" required placeholder="ahmed@alsharif.law" class="input-lux mb-4" autocomplete="username"/>
+          <input id="login-email" name="email" type="email" required placeholder="name@alsharif.law" class="input-lux mb-4" autocomplete="username"/>
           <label class="block text-sm mb-1 font-semibold">كلمة المرور</label>
           <input id="login-pass" name="password" type="password" required placeholder="••••••••" class="input-lux mb-6" autocomplete="current-password"/>
           <button class="btn-gold w-full py-3 text-base">دخول النظام</button>
           <p id="login-err" class="text-red-800 text-sm mt-3 text-center hidden"></p>
-          <div class="gold-rule my-6"></div>
-          <div class="text-[12px] text-navy-700/60 leading-6 text-center">
-            <button type="button" id="fill-demo" class="text-gold-700 hover:text-gold-500 font-semibold underline underline-offset-4 cursor-pointer transition">
-              اضغط هنا لتعبئة بيانات الحساب التجريبي تلقائياً
-            </button>
-          </div>
         </form>
       </div>
     </div>
@@ -1429,14 +1423,6 @@ async function render() {
 }
 
 function bindLogin() {
-  $('#fill-demo')?.addEventListener('click', () => {
-    const emailInput = $('#login-email');
-    const passInput = $('#login-pass');
-    if (emailInput) emailInput.value = 'ahmed@alsharif.law';
-    if (passInput) passInput.value = 'sharif2026';
-    toast('تم ملء بيانات الدخول التجريبية');
-  });
-
   $('#login-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -1663,14 +1649,6 @@ function bindView() {
 window.addEventListener('hashchange', () => { if (state.user) render(); });
 
 (async function boot() {
-  const q = new URLSearchParams(window.location.search);
-  const autologin = q.get('autologin');
-  if (autologin && !state.user) {
-    try {
-      const r = await api('/api/login', { method: 'POST', body: { email: autologin, password: 'sharif2026' } });
-      state.user = r.user;
-    } catch {}
-  }
   if (!state.user) {
     try {
       const me = await api('/api/me');
