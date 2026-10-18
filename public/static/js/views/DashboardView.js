@@ -88,7 +88,17 @@ export const DashboardView = {
             }).join('')}
           </div>
         </section>
-      ` : ''}
+      ` : `
+        <div class="paper-card rounded-xl border border-emerald-200 bg-emerald-50/40 p-3.5 mb-6 flex items-center justify-between text-xs text-emerald-900">
+          <div class="flex items-center gap-2">
+            <i class="fas fa-shield-halved text-emerald-600 text-base"></i>
+            <span><b>حالة مواعيد الاستئناف والنقض:</b> كافة المواعيد الإجرائية للقضايا منتظمة وفي النطاق الآمن، ولا توجد استحقاقات حرجة خلال الأيام السبعة القادمة.</span>
+          </div>
+          <span class="font-bold text-[11px] bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full border border-emerald-300">
+            ${radar.total_pending} ميعاد مسجل سارٍ
+          </span>
+        </div>
+      `}
 
       <!-- Executive KPIs Grid -->
       <section class="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-3 mb-6 md:mb-8">
