@@ -36,7 +36,7 @@ export function renderAppLayout(): string {
 </head>
 <body class="font-cairo bg-ivory text-ink antialiased selection:bg-gold-500 selection:text-navy-950">
   <div id="app"></div>
-  <script src="/static/app.js" defer></script>
+  <script type="module" src="/static/js/main.js"></script>
 </body>
 </html>`
 }
