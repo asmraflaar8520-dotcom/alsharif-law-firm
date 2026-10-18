@@ -3,6 +3,7 @@ import { requireUser, getCurrentUser } from '../middleware/auth'
 import { DocumentsService } from '../services/documents.service'
 import { StorageService } from '../storage'
 import { AppContext, User } from '../types'
+import { validateFileUploadMetadata } from '../utils/validators'
 
 export const documentRoutes = new Hono<AppContext>()
 
@@ -47,16 +48,33 @@ documentRoutes.post('/upload', async (c) => {
       return c.json({ error: 'لم يتم توفير أي ملف للرفع' }, 400)
     }
 
-    const uploaded = await StorageService.uploadFile({
-      buffer,
+    const validation = validateFileUploadMetadata({
       filename,
       mimeType,
+      size: buffer.length,
       folder
+    })
+
+    if (!validation.success) {
+      return c.json({
+        error: validation.errors?.[0]?.message || 'بيانات الملف غير صالحة',
+        details: validation.errors
+      }, 400)
+    }
+
+    const uploaded = await StorageService.uploadFile({
+      buffer,
+      filename: validation.data!.filename,
+      mimeType: validation.data!.mimeType,
+      folder: validation.data!.folder
     })
 
     return c.json(uploaded, 201)
   } catch (err: any) {
-    return c.json({ error: err.message || 'فشل رفع الملف' }, 400)
+    return c.json({
+      error: err.message || 'فشل رفع الملف',
+      ...(err.details ? { details: err.details } : {})
+    }, 400)
   }
 })
 
@@ -118,14 +136,18 @@ documentRoutes.delete('/files/:folder/:filename', async (c) => {
 
 /**
  * GET /api/documents
- * Controller listing uploaded documents
+ * Controller listing uploaded documents with pagination and filters
  */
 documentRoutes.get('/documents', async (c) => {
   const user = await requireUser(c)
   if (user instanceof Response) return user
 
-  const documents = await DocumentsService.getDocuments(c.env.DB)
-  return c.json(documents)
+  const query = c.req.query()
+  const result = await DocumentsService.getPaginatedDocuments(c.env.DB, query)
+  if (query.all === 'true' || query.all === '1' || query.raw === 'true') {
+    return c.json(result.data)
+  }
+  return c.json(result)
 })
 
 /**
@@ -156,7 +178,7 @@ documentRoutes.post('/documents', async (c) => {
     const id = await DocumentsService.createDocument(c.env.DB, body, (user as User).id)
     return c.json({ id })
   } catch (err: any) {
-    return c.json({ error: err.message }, 400)
+    return c.json({ error: err.message, ...(err.details ? { details: err.details } : {}) }, 400)
   }
 })
 
@@ -200,7 +222,7 @@ documentRoutes.post('/poas', async (c) => {
     const id = await DocumentsService.createPoa(c.env.DB, body, (user as User).id)
     return c.json({ id })
   } catch (err: any) {
-    return c.json({ error: err.message }, 400)
+    return c.json({ error: err.message, ...(err.details ? { details: err.details } : {}) }, 400)
   }
 })
 
@@ -218,7 +240,7 @@ documentRoutes.put('/poas/:id', async (c) => {
     return c.json({ ok: true })
   } catch (err: any) {
     const status: 400 | 404 = err.message === 'التوكيل غير موجود' ? 404 : 400
-    return c.json({ error: err.message }, status)
+    return c.json({ error: err.message, ...(err.details ? { details: err.details } : {}) }, status)
   }
 })
 
@@ -235,7 +257,7 @@ documentRoutes.post('/notes', async (c) => {
     const id = await DocumentsService.createNote(c.env.DB, body, (user as User).id)
     return c.json({ id })
   } catch (err: any) {
-    return c.json({ error: err.message }, 400)
+    return c.json({ error: err.message, ...(err.details ? { details: err.details } : {}) }, 400)
   }
 })
 

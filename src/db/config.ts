@@ -1,5 +1,6 @@
 import path from 'node:path'
 import fs from 'node:fs'
+import { config } from '../config/env'
 
 export interface DatabaseConfig {
   url: string
@@ -8,27 +9,25 @@ export interface DatabaseConfig {
 }
 
 /**
- * Resolves database connection configuration.
+ * Resolves database connection configuration using centralized environment config.
  * Prioritizes remote serverless database URLs (Turso LibSQL, Supabase, Neon),
  * and falls back to a persistent local SQLite file in ./data/law_firm.db
  * to prevent data loss across restarts or cold starts.
  */
 export function getDatabaseConfig(): DatabaseConfig {
-  const env = (globalThis as any).process?.env || {}
-
   // 1. Check for remote serverless database URLs (Turso LibSQL / Neon / Supabase)
-  const remoteUrl = env.TURSO_DATABASE_URL || env.DATABASE_URL || env.LIBSQL_URL
+  const remoteUrl = config.database.url
   if (remoteUrl && !remoteUrl.startsWith('file:')) {
     return {
       url: remoteUrl,
-      authToken: env.TURSO_AUTH_TOKEN || env.DATABASE_AUTH_TOKEN,
+      authToken: config.database.authToken,
       isRemote: true
     }
   }
 
   // 2. Local persistent database file fallback
   // Can be customized via SQLITE_PATH or DATABASE_PATH
-  const localPath = env.SQLITE_PATH || env.DATABASE_PATH || './data/law_firm.db'
+  const localPath = config.database.localPath
   const isMemory = localPath === ':memory:' || localPath === 'file::memory:'
 
   let url = localPath

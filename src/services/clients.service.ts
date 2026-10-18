@@ -7,10 +7,19 @@ import {
 } from '../config/constants'
 import { escapeLike, isAllowed, cleanString } from '../utils/validation'
 import { logActivity } from '../utils/logger'
+import {
+  parsePaginationParams,
+  createPaginationEnvelope,
+  PaginationParams,
+  PaginatedResponse
+} from '../utils/pagination'
+import { SqlQueryBuilder } from '../utils/query-builder'
 
-export interface ClientFilterParams {
+export interface ClientFilterParams extends PaginationParams {
   q?: string
   status?: string
+  type?: string
+  lawyer?: string | number
 }
 
 export interface CreateClientDTO {
@@ -53,29 +62,45 @@ export interface UpdateClientDTO {
 
 export class ClientsService {
   /**
-   * Lists clients with keyword and status filtering, including case counts and balance
+   * Returns a paginated list of clients with calculated cases_count and balance using SqlQueryBuilder
+   */
+  static async getPaginatedClients(db: D1Database, params: PaginationParams = {}): Promise<PaginatedResponse<any>> {
+    const { page, limit, offset, search } = parsePaginationParams(params)
+    const { status, type, lawyer } = params
+
+    const qb = new SqlQueryBuilder()
+      .whereSearch([
+        'cl.name',
+        'cl.phone',
+        'cl.national_id',
+        'cl.tax_id',
+        'cl.commercial_reg',
+        'cl.email',
+        'cl.city'
+      ], search)
+      .whereIf('cl.status = ?', status && isAllowed(status, [...ALLOWED_CLIENT_STATUSES]), status)
+      .whereIf('cl.type = ?', type && isAllowed(String(type), [...ALLOWED_CLIENT_TYPES]), String(type))
+      .whereIf('cl.assigned_lawyer_id = ?', lawyer, Number(lawyer))
+
+    return SqlQueryBuilder.executePaginated(db, {
+      fromClause: `clients cl LEFT JOIN users u ON u.id = cl.assigned_lawyer_id`,
+      selectColumns: `cl.*, u.name AS lawyer_name,
+        (SELECT COUNT(*) FROM cases WHERE client_id = cl.id) AS cases_count,
+        (SELECT COALESCE(SUM(total-paid),0) FROM invoices WHERE client_id = cl.id AND status NOT IN ('ملغاة','مسددة')) AS balance`,
+      whereBuilder: qb,
+      orderBy: "CASE cl.status WHEN 'vip' THEN 0 ELSE 1 END, cl.name",
+      page,
+      limit,
+      offset
+    })
+  }
+
+  /**
+   * Lists clients with keyword and status filtering (backward compatible array return)
    */
   static async getClients(db: D1Database, filters: ClientFilterParams = {}): Promise<any[]> {
-    const { q, status } = filters
-    let sql = `SELECT cl.*, u.name AS lawyer_name,
-      (SELECT COUNT(*) FROM cases WHERE client_id = cl.id) AS cases_count,
-      (SELECT COALESCE(SUM(total-paid),0) FROM invoices WHERE client_id = cl.id AND status NOT IN ('ملغاة','مسددة')) AS balance
-      FROM clients cl LEFT JOIN users u ON u.id = cl.assigned_lawyer_id WHERE 1=1`
-    const binds: any[] = []
-
-    if (q) {
-      sql += ` AND (cl.name LIKE ? ESCAPE '\\' OR cl.phone LIKE ? ESCAPE '\\' OR cl.national_id LIKE ? ESCAPE '\\' OR cl.tax_id LIKE ? ESCAPE '\\')`
-      const like = `%${escapeLike(q)}%`
-      binds.push(like, like, like, like)
-    }
-    if (status && isAllowed(status, [...ALLOWED_CLIENT_STATUSES])) {
-      sql += ` AND cl.status = ?`
-      binds.push(status)
-    }
-
-    sql += ` ORDER BY CASE cl.status WHEN 'vip' THEN 0 ELSE 1 END, cl.name LIMIT 100`
-    const { results } = await db.prepare(sql).bind(...binds).all()
-    return results || []
+    const res = await this.getPaginatedClients(db, { ...filters, limit: filters.limit || 100 })
+    return res.data
   }
 
   /**

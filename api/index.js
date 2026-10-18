@@ -3912,30 +3912,131 @@ userRoutes.put("/:id", async (c) => {
   }
 });
 
+// src/utils/pagination.ts
+function parsePaginationParams(query = {}) {
+  const isRawAll = query.all === "true" || query.all === "1";
+  let page = parseInt(String(query.page || 1), 10);
+  if (isNaN(page) || page < 1) page = 1;
+  let limit = parseInt(String(query.limit || 20), 10);
+  if (isNaN(limit) || limit < 1) limit = 20;
+  if (limit > 100) limit = 100;
+  const offset = (page - 1) * limit;
+  const search = String(query.search || query.q || "").trim();
+  return { page, limit, offset, search, isRawAll };
+}
+function createPaginationEnvelope(data, total, page, limit) {
+  const totalSafe = Math.max(0, total || 0);
+  const totalPages = limit > 0 ? Math.ceil(totalSafe / limit) : 0;
+  const hasMore = page < totalPages;
+  return {
+    data: data || [],
+    pagination: {
+      total: totalSafe,
+      page,
+      limit,
+      totalPages,
+      hasMore
+    }
+  };
+}
+
+// src/utils/query-builder.ts
+var SqlQueryBuilder = class {
+  conditions = ["1=1"];
+  binds = [];
+  /**
+   * Adds an unconditional WHERE clause and binds.
+   */
+  where(condition, ...binds) {
+    this.conditions.push(condition);
+    this.binds.push(...binds);
+    return this;
+  }
+  /**
+   * Conditionally appends a WHERE clause if the condition evaluated is truthy.
+   */
+  whereIf(condition, shouldAdd, ...binds) {
+    if (Boolean(shouldAdd)) {
+      this.conditions.push(condition);
+      this.binds.push(...binds);
+    }
+    return this;
+  }
+  /**
+   * Appends multi-column substring search with wildcard escaping.
+   * Format: AND (col1 LIKE ? ESCAPE '\' OR col2 LIKE ? ESCAPE '\' ...)
+   */
+  whereSearch(columns, search) {
+    if (!search || !search.trim() || columns.length === 0) return this;
+    const escapedTerm = `%${escapeLike(search.trim())}%`;
+    const clauses = columns.map((col) => `${col} LIKE ? ESCAPE '\\'`);
+    this.conditions.push(`(${clauses.join(" OR ")})`);
+    for (let i = 0; i < columns.length; i++) {
+      this.binds.push(escapedTerm);
+    }
+    return this;
+  }
+  /**
+   * Builds the formatted WHERE clause string and parameter bindings.
+   */
+  buildWhere() {
+    return {
+      whereSql: `WHERE ${this.conditions.join(" AND ")}`,
+      binds: [...this.binds]
+    };
+  }
+  /**
+   * Executes both count and paginated data queries using the builder,
+   * returning the standardized PaginatedResponse envelope.
+   */
+  static async executePaginated(db, opts) {
+    const { whereSql, binds } = opts.whereBuilder.buildWhere();
+    const countSql = `SELECT COUNT(*) AS total FROM ${opts.fromClause} ${whereSql}`;
+    const countRow = await db.prepare(countSql).bind(...binds).first();
+    const total = Number(countRow?.total || 0);
+    const orderClause = opts.orderBy ? `ORDER BY ${opts.orderBy}` : "";
+    const dataSql = `SELECT ${opts.selectColumns} FROM ${opts.fromClause} ${whereSql} ${orderClause} LIMIT ? OFFSET ?`;
+    const dataBinds = [...binds, opts.limit, opts.offset];
+    const { results } = await db.prepare(dataSql).bind(...dataBinds).all();
+    return createPaginationEnvelope(results || [], total, opts.page, opts.limit);
+  }
+};
+
 // src/services/clients.service.ts
 var ClientsService = class {
   /**
-   * Lists clients with keyword and status filtering, including case counts and balance
+   * Returns a paginated list of clients with calculated cases_count and balance using SqlQueryBuilder
+   */
+  static async getPaginatedClients(db, params = {}) {
+    const { page, limit, offset, search } = parsePaginationParams(params);
+    const { status, type, lawyer } = params;
+    const qb = new SqlQueryBuilder().whereSearch([
+      "cl.name",
+      "cl.phone",
+      "cl.national_id",
+      "cl.tax_id",
+      "cl.commercial_reg",
+      "cl.email",
+      "cl.city"
+    ], search).whereIf("cl.status = ?", status && isAllowed(status, [...ALLOWED_CLIENT_STATUSES]), status).whereIf("cl.type = ?", type && isAllowed(String(type), [...ALLOWED_CLIENT_TYPES]), String(type)).whereIf("cl.assigned_lawyer_id = ?", lawyer, Number(lawyer));
+    return SqlQueryBuilder.executePaginated(db, {
+      fromClause: `clients cl LEFT JOIN users u ON u.id = cl.assigned_lawyer_id`,
+      selectColumns: `cl.*, u.name AS lawyer_name,
+        (SELECT COUNT(*) FROM cases WHERE client_id = cl.id) AS cases_count,
+        (SELECT COALESCE(SUM(total-paid),0) FROM invoices WHERE client_id = cl.id AND status NOT IN ('\u0645\u0644\u063A\u0627\u0629','\u0645\u0633\u062F\u062F\u0629')) AS balance`,
+      whereBuilder: qb,
+      orderBy: "CASE cl.status WHEN 'vip' THEN 0 ELSE 1 END, cl.name",
+      page,
+      limit,
+      offset
+    });
+  }
+  /**
+   * Lists clients with keyword and status filtering (backward compatible array return)
    */
   static async getClients(db, filters = {}) {
-    const { q, status } = filters;
-    let sql = `SELECT cl.*, u.name AS lawyer_name,
-      (SELECT COUNT(*) FROM cases WHERE client_id = cl.id) AS cases_count,
-      (SELECT COALESCE(SUM(total-paid),0) FROM invoices WHERE client_id = cl.id AND status NOT IN ('\u0645\u0644\u063A\u0627\u0629','\u0645\u0633\u062F\u062F\u0629')) AS balance
-      FROM clients cl LEFT JOIN users u ON u.id = cl.assigned_lawyer_id WHERE 1=1`;
-    const binds = [];
-    if (q) {
-      sql += ` AND (cl.name LIKE ? ESCAPE '\\' OR cl.phone LIKE ? ESCAPE '\\' OR cl.national_id LIKE ? ESCAPE '\\' OR cl.tax_id LIKE ? ESCAPE '\\')`;
-      const like = `%${escapeLike(q)}%`;
-      binds.push(like, like, like, like);
-    }
-    if (status && isAllowed(status, [...ALLOWED_CLIENT_STATUSES])) {
-      sql += ` AND cl.status = ?`;
-      binds.push(status);
-    }
-    sql += ` ORDER BY CASE cl.status WHEN 'vip' THEN 0 ELSE 1 END, cl.name LIMIT 100`;
-    const { results } = await db.prepare(sql).bind(...binds).all();
-    return results || [];
+    const res = await this.getPaginatedClients(db, { ...filters, limit: filters.limit || 100 });
+    return res.data;
   }
   /**
    * Fetches single client details including linked cases, invoices, POAs, and notes
@@ -4042,11 +4143,12 @@ var clientRoutes = new Hono2();
 clientRoutes.get("/", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const clients = await ClientsService.getClients(c.env.DB, {
-    q: c.req.query("q"),
-    status: c.req.query("status")
-  });
-  return c.json(clients);
+  const query = c.req.query();
+  const result = await ClientsService.getPaginatedClients(c.env.DB, query);
+  if (query.all === "true" || query.all === "1" || query.raw === "true") {
+    return c.json(result.data);
+  }
+  return c.json(result);
 });
 clientRoutes.get("/:id", async (c) => {
   const user = await requireUser(c);
@@ -4063,7 +4165,7 @@ clientRoutes.post("/", async (c) => {
     const id = await ClientsService.createClient(c.env.DB, body, user.id);
     return c.json({ id });
   } catch (err) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: err.message, ...err.details ? { details: err.details } : {} }, 400);
   }
 });
 clientRoutes.put("/:id", async (c) => {
@@ -4079,47 +4181,128 @@ clientRoutes.put("/:id", async (c) => {
   }
 });
 
+// src/services/hearings.service.ts
+var HearingsService = class {
+  /**
+   * Returns a paginated list of hearings with count and metadata using SqlQueryBuilder
+   */
+  static async getPaginatedHearings(db, params = {}) {
+    const { page, limit, offset, search } = parsePaginationParams(params);
+    const from = params.from || "2000-01-01";
+    const to = params.to || "2099-12-31";
+    const { lawyer, status, case_id, court_id } = params;
+    const qb = new SqlQueryBuilder().where("h.hearing_date BETWEEN ? AND ?", from, to).whereSearch([
+      "cs.title",
+      "cs.case_no",
+      "cl.name",
+      "h.purpose",
+      "h.circuit",
+      "co.name"
+    ], search).whereIf("h.lawyer_id = ?", lawyer, Number(lawyer)).whereIf("h.status = ?", status && isAllowed(status, [...ALLOWED_HEARING_STATUSES]), status).whereIf("h.case_id = ?", case_id, Number(case_id)).whereIf("h.court_id = ?", court_id, Number(court_id));
+    return SqlQueryBuilder.executePaginated(db, {
+      fromClause: `hearings h
+        JOIN cases cs ON cs.id = h.case_id
+        JOIN clients cl ON cl.id = cs.client_id
+        LEFT JOIN users u ON u.id = h.lawyer_id
+        LEFT JOIN courts co ON co.id = h.court_id`,
+      selectColumns: `h.*, cs.case_no, cs.year, cs.title AS case_title, cs.priority, cl.name AS client_name, u.name AS lawyer_name, u.initials, u.color, co.name AS court_name`,
+      whereBuilder: qb,
+      orderBy: "h.hearing_date, h.hearing_time",
+      page,
+      limit,
+      offset
+    });
+  }
+  /**
+   * Lists court session hearings (backward compatible array return)
+   */
+  static async getHearings(db, filters = {}) {
+    const res = await this.getPaginatedHearings(db, { ...filters, limit: filters?.limit || 200 });
+    return res.data;
+  }
+  /**
+   * Schedules a court hearing session
+   */
+  static async scheduleHearing(db, data, currentUserId) {
+    if (!data.case_id || !data.hearing_date) {
+      throw new Error("\u0627\u0644\u0642\u0636\u064A\u0629 \u0648\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062C\u0644\u0633\u0629 \u062D\u0642\u0648\u0644 \u0625\u062C\u0628\u0627\u0631\u064A\u0629");
+    }
+    const status = data.status && isAllowed(data.status, [...ALLOWED_HEARING_STATUSES]) ? data.status : "\u0642\u0627\u062F\u0645\u0629";
+    const result = await db.prepare(
+      `INSERT INTO hearings (case_id, hearing_date, hearing_time, court_id, circuit, type, purpose, lawyer_id, status, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      data.case_id,
+      data.hearing_date,
+      cleanString(data.hearing_time, 20),
+      data.court_id || null,
+      cleanString(data.circuit, 100),
+      cleanString(data.type, 50) || "\u0645\u0631\u0627\u0641\u0639\u0629",
+      cleanString(data.purpose, 500),
+      data.lawyer_id || null,
+      status,
+      cleanString(data.notes, 2e3)
+    ).run();
+    return Number(result.meta.last_row_id);
+  }
+  /**
+   * Updates hearing decision, attendance lawyer, or roll-over date
+   */
+  static async updateHearing(db, id, data) {
+    const existing = await db.prepare(`SELECT * FROM hearings WHERE id=?`).bind(id).first();
+    if (!existing) throw new Error("\u0627\u0644\u062C\u0644\u0633\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629");
+    const status = data.status && isAllowed(data.status, [...ALLOWED_HEARING_STATUSES]) ? data.status : existing.status;
+    await db.prepare(
+      `UPDATE hearings SET hearing_date=?, hearing_time=?, court_id=?, circuit=?, type=?, purpose=?, result=?, next_date=?, lawyer_id=?, status=?, notes=? WHERE id=?`
+    ).bind(
+      data.hearing_date || existing.hearing_date,
+      data.hearing_time !== void 0 ? cleanString(data.hearing_time, 20) : existing.hearing_time,
+      data.court_id !== void 0 ? data.court_id : existing.court_id,
+      data.circuit !== void 0 ? cleanString(data.circuit, 100) : existing.circuit,
+      data.type !== void 0 ? cleanString(data.type, 50) : existing.type,
+      data.purpose !== void 0 ? cleanString(data.purpose, 500) : existing.purpose,
+      data.result !== void 0 ? cleanString(data.result, 1e3) : existing.result,
+      data.next_date !== void 0 ? data.next_date : existing.next_date,
+      data.lawyer_id !== void 0 ? data.lawyer_id : existing.lawyer_id,
+      status,
+      data.notes !== void 0 ? cleanString(data.notes, 2e3) : existing.notes,
+      id
+    ).run();
+    return true;
+  }
+};
+
 // src/services/cases.service.ts
 var CasesService = class {
   /**
-   * Searches and lists cases with priority and date sorting
+   * Returns a paginated list of cases with total counts and metadata using SqlQueryBuilder
+   */
+  static async getPaginatedCases(db, params = {}) {
+    const { page, limit, offset, search } = parsePaginationParams(params);
+    const { status, lawyer, type, priority, category, client_id } = params;
+    const qb = new SqlQueryBuilder().whereSearch(["c.title", "c.case_no", "cl.name", "c.opposing_name", "c.subject"], search).whereIf("c.status = ?", status && isAllowed(status, [...ALLOWED_CASE_STATUSES]), status).whereIf("c.lead_lawyer_id = ?", lawyer, Number(lawyer)).whereIf("c.case_type_id = ?", type, Number(type)).whereIf("ct.category = ?", category, cleanString(category, 50)).whereIf("c.priority = ?", priority && isAllowed(priority, [...ALLOWED_CASE_PRIORITIES]), priority).whereIf("c.client_id = ?", client_id, Number(client_id));
+    return SqlQueryBuilder.executePaginated(db, {
+      fromClause: `cases c
+        JOIN clients cl ON cl.id=c.client_id
+        LEFT JOIN case_types ct ON ct.id=c.case_type_id
+        LEFT JOIN courts co ON co.id=c.court_id
+        LEFT JOIN users u ON u.id=c.lead_lawyer_id`,
+      selectColumns: `c.*, cl.name AS client_name, cl.type AS client_type, ct.name AS type_name, ct.category,
+        co.name AS court_name, u.name AS lawyer_name, u.initials AS lawyer_initials, u.color AS lawyer_color,
+        (SELECT MIN(hearing_date) FROM hearings h WHERE h.case_id=c.id AND h.hearing_date>=date('now') AND h.status IN ('\u0642\u0627\u062F\u0645\u0629','\u062D\u062C\u0632 \u0644\u0644\u062D\u0643\u0645')) AS next_hearing`,
+      whereBuilder: qb,
+      orderBy: "CASE c.priority WHEN '\u0639\u0627\u062C\u0644\u0629' THEN 0 WHEN '\u0639\u0627\u0644\u064A\u0629' THEN 1 WHEN '\u0639\u0627\u062F\u064A\u0629' THEN 2 ELSE 3 END, c.updated_at DESC",
+      page,
+      limit,
+      offset
+    });
+  }
+  /**
+   * Searches and lists cases (backward compatible array return)
    */
   static async getCases(db, filters = {}) {
-    const { q, status, lawyer, type, priority } = filters;
-    let sql = `SELECT c.*, cl.name AS client_name, cl.type AS client_type, ct.name AS type_name, ct.category,
-      co.name AS court_name, u.name AS lawyer_name, u.initials AS lawyer_initials, u.color AS lawyer_color,
-      (SELECT MIN(hearing_date) FROM hearings h WHERE h.case_id=c.id AND h.hearing_date>=date('now') AND h.status IN ('\u0642\u0627\u062F\u0645\u0629','\u062D\u062C\u0632 \u0644\u0644\u062D\u0643\u0645')) AS next_hearing
-      FROM cases c
-      JOIN clients cl ON cl.id=c.client_id
-      LEFT JOIN case_types ct ON ct.id=c.case_type_id
-      LEFT JOIN courts co ON co.id=c.court_id
-      LEFT JOIN users u ON u.id=c.lead_lawyer_id
-      WHERE 1=1`;
-    const binds = [];
-    if (q) {
-      sql += ` AND (c.title LIKE ? ESCAPE '\\' OR c.case_no LIKE ? ESCAPE '\\' OR cl.name LIKE ? ESCAPE '\\' OR c.opposing_name LIKE ? ESCAPE '\\')`;
-      const like = `%${escapeLike(q)}%`;
-      binds.push(like, like, like, like);
-    }
-    if (status && isAllowed(status, [...ALLOWED_CASE_STATUSES])) {
-      sql += ` AND c.status = ?`;
-      binds.push(status);
-    }
-    if (lawyer) {
-      sql += ` AND c.lead_lawyer_id = ?`;
-      binds.push(lawyer);
-    }
-    if (type) {
-      sql += ` AND c.case_type_id = ?`;
-      binds.push(type);
-    }
-    if (priority && isAllowed(priority, [...ALLOWED_CASE_PRIORITIES])) {
-      sql += ` AND c.priority = ?`;
-      binds.push(priority);
-    }
-    sql += ` ORDER BY CASE c.priority WHEN '\u0639\u0627\u062C\u0644\u0629' THEN 0 WHEN '\u0639\u0627\u0644\u064A\u0629' THEN 1 WHEN '\u0639\u0627\u062F\u064A\u0629' THEN 2 ELSE 3 END, c.updated_at DESC LIMIT 150`;
-    const { results } = await db.prepare(sql).bind(...binds).all();
-    return results || [];
+    const res = await this.getPaginatedCases(db, { ...filters, limit: filters.limit || 150 });
+    return res.data;
   }
   /**
    * Fetches complete case dossier with all linked records
@@ -4243,82 +4426,28 @@ var CasesService = class {
     await db.prepare(`INSERT OR REPLACE INTO case_lawyers (case_id, user_id, role) VALUES (?, ?, ?)`).bind(caseId, lawyerId, cleanString(role, 50) || "\u0645\u0633\u0627\u0639\u062F").run();
   }
   /**
-   * Lists court session hearings
+   * Returns a paginated list of hearings with count and metadata
+   */
+  static async getPaginatedHearings(db, params = {}) {
+    return HearingsService.getPaginatedHearings(db, params);
+  }
+  /**
+   * Lists court session hearings (backward compatible array return)
    */
   static async getHearings(db, filters = {}) {
-    const from = filters.from || "2000-01-01";
-    const to = filters.to || "2099-12-31";
-    const { lawyer, status } = filters;
-    let sql = `SELECT h.*, cs.case_no, cs.year, cs.title AS case_title, cs.priority, cl.name AS client_name, u.name AS lawyer_name, u.initials, u.color, co.name AS court_name
-      FROM hearings h
-      JOIN cases cs ON cs.id = h.case_id
-      JOIN clients cl ON cl.id = cs.client_id
-      LEFT JOIN users u ON u.id = h.lawyer_id
-      LEFT JOIN courts co ON co.id = h.court_id
-      WHERE h.hearing_date BETWEEN ? AND ?`;
-    const binds = [from, to];
-    if (lawyer) {
-      sql += ` AND h.lawyer_id = ?`;
-      binds.push(lawyer);
-    }
-    if (status && isAllowed(status, [...ALLOWED_HEARING_STATUSES])) {
-      sql += ` AND h.status = ?`;
-      binds.push(status);
-    }
-    sql += ` ORDER BY h.hearing_date, h.hearing_time LIMIT 250`;
-    const { results } = await db.prepare(sql).bind(...binds).all();
-    return results || [];
+    return HearingsService.getHearings(db, filters);
   }
   /**
    * Schedules a court hearing
    */
   static async scheduleHearing(db, data, currentUserId) {
-    if (!data.case_id || !data.hearing_date) {
-      throw new Error("\u0627\u0644\u0642\u0636\u064A\u0629 \u0648\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062C\u0644\u0633\u0629 \u0645\u0637\u0644\u0648\u0628\u0627\u0646");
-    }
-    const status = data.status && isAllowed(data.status, [...ALLOWED_HEARING_STATUSES]) ? data.status : "\u0642\u0627\u062F\u0645\u0629";
-    const result = await db.prepare(
-      `INSERT INTO hearings (case_id, hearing_date, hearing_time, court_id, circuit, type, purpose, lawyer_id, status, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(
-      Number(data.case_id),
-      data.hearing_date,
-      data.hearing_time || null,
-      data.court_id ? Number(data.court_id) : null,
-      cleanString(data.circuit, 100),
-      cleanString(data.type, 50) || "\u0645\u0631\u0627\u0641\u0639\u0629",
-      cleanString(data.purpose, MAX_TEXT_LENGTH),
-      data.lawyer_id ? Number(data.lawyer_id) : null,
-      status,
-      cleanString(data.notes, MAX_NOTE_LENGTH)
-    ).run();
-    const id = result.meta.last_row_id;
-    await logActivity(db, currentUserId, "hearing", id, "\u062C\u062F\u0648\u0644\u0629", `\u062C\u0644\u0633\u0629 ${data.hearing_date}`);
-    return id;
+    return HearingsService.scheduleHearing(db, data, currentUserId);
   }
   /**
    * Updates hearing outcome or details
    */
   static async updateHearing(db, id, data) {
-    const existing = await db.prepare(`SELECT * FROM hearings WHERE id = ?`).bind(id).first();
-    if (!existing) {
-      throw new Error("\u0627\u0644\u062C\u0644\u0633\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629");
-    }
-    const hearing_date = data.hearing_date !== void 0 ? data.hearing_date : existing.hearing_date;
-    const hearing_time = data.hearing_time !== void 0 ? data.hearing_time : existing.hearing_time;
-    const court_id = data.court_id !== void 0 ? data.court_id ? Number(data.court_id) : null : existing.court_id;
-    const circuit = data.circuit !== void 0 ? cleanString(data.circuit, 100) : existing.circuit;
-    const type = data.type !== void 0 ? cleanString(data.type, 50) : existing.type;
-    const purpose = data.purpose !== void 0 ? cleanString(data.purpose, MAX_TEXT_LENGTH) : existing.purpose;
-    const result = data.result !== void 0 ? cleanString(data.result, MAX_TEXT_LENGTH) : existing.result;
-    const next_date = data.next_date !== void 0 ? data.next_date : existing.next_date;
-    const lawyer_id = data.lawyer_id !== void 0 ? data.lawyer_id ? Number(data.lawyer_id) : null : existing.lawyer_id;
-    const status = data.status !== void 0 && isAllowed(data.status, [...ALLOWED_HEARING_STATUSES]) ? data.status : existing.status;
-    const notes = data.notes !== void 0 ? cleanString(data.notes, MAX_NOTE_LENGTH) : existing.notes;
-    await db.prepare(
-      `UPDATE hearings SET hearing_date=?, hearing_time=?, court_id=?, circuit=?, type=?, purpose=?, result=?, next_date=?, lawyer_id=?, status=?, notes=? WHERE id=?`
-    ).bind(hearing_date, hearing_time, court_id, circuit, type, purpose, result, next_date, lawyer_id, status, notes, id).run();
-    return true;
+    return HearingsService.updateHearing(db, id, data);
   }
 };
 
@@ -4328,8 +4457,11 @@ caseRoutes.get("/cases", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
   const query = c.req.query();
-  const cases = await CasesService.getCases(c.env.DB, query);
-  return c.json(cases);
+  const result = await CasesService.getPaginatedCases(c.env.DB, query);
+  if (query.all === "true" || query.all === "1" || query.raw === "true") {
+    return c.json(result.data);
+  }
+  return c.json(result);
 });
 caseRoutes.get("/cases/:id", async (c) => {
   const user = await requireUser(c);
@@ -4346,7 +4478,7 @@ caseRoutes.post("/cases", async (c) => {
     const id = await CasesService.createCase(c.env.DB, body, user.id);
     return c.json({ id });
   } catch (err) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: err.message, ...err.details ? { details: err.details } : {} }, 400);
   }
 });
 caseRoutes.put("/cases/:id", async (c) => {
@@ -4372,8 +4504,12 @@ caseRoutes.post("/cases/:id/lawyers", async (c) => {
 caseRoutes.get("/hearings", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const hearings = await CasesService.getHearings(c.env.DB, c.req.query());
-  return c.json(hearings);
+  const query = c.req.query();
+  const result = await CasesService.getPaginatedHearings(c.env.DB, query);
+  if (query.all === "true" || query.all === "1" || query.raw === "true") {
+    return c.json(result.data);
+  }
+  return c.json(result);
 });
 caseRoutes.post("/hearings", async (c) => {
   const user = await requireUser(c);
@@ -4522,18 +4658,48 @@ taskRoutes.put("/:id", async (c) => {
 // src/services/documents.service.ts
 var DocumentsService = class {
   /**
-   * Lists electronic files and documents
+   * Returns a paginated list of electronic files and documents using SqlQueryBuilder
    */
-  static async getDocuments(db) {
-    const { results } = await db.prepare(
-      `SELECT d.*, cs.title AS case_title, cs.case_no, cs.year, cl.name AS client_name, u.name AS uploader
-       FROM documents d
-       LEFT JOIN cases cs ON cs.id=d.case_id
-       LEFT JOIN clients cl ON cl.id=COALESCE(d.client_id, cs.client_id)
-       LEFT JOIN users u ON u.id=d.uploaded_by
-       ORDER BY d.created_at DESC LIMIT 150`
-    ).all();
-    return results || [];
+  static async getPaginatedDocuments(db, params = {}) {
+    const { page, limit, offset, search } = parsePaginationParams(params);
+    const { doc_type, category, case_id, client_id } = params;
+    const qb = new SqlQueryBuilder().whereSearch([
+      "d.title",
+      "d.ref_no",
+      "d.file_name",
+      "cs.title",
+      "cs.case_no",
+      "cl.name"
+    ], search);
+    const docTypeFilter = doc_type || category;
+    if (docTypeFilter) {
+      qb.where("d.doc_type = ?", cleanString(docTypeFilter, 50));
+    }
+    if (case_id) {
+      qb.where("d.case_id = ?", Number(case_id));
+    }
+    if (client_id) {
+      qb.where("COALESCE(d.client_id, cs.client_id) = ?", Number(client_id));
+    }
+    return SqlQueryBuilder.executePaginated(db, {
+      fromClause: `documents d
+        LEFT JOIN cases cs ON cs.id=d.case_id
+        LEFT JOIN clients cl ON cl.id=COALESCE(d.client_id, cs.client_id)
+        LEFT JOIN users u ON u.id=d.uploaded_by`,
+      selectColumns: "d.*, cs.title AS case_title, cs.case_no, cs.year, cl.name AS client_name, u.name AS uploader",
+      whereBuilder: qb,
+      orderBy: "d.created_at DESC",
+      page,
+      limit,
+      offset
+    });
+  }
+  /**
+   * Lists electronic files and documents (backward compatible array return)
+   */
+  static async getDocuments(db, filters = {}) {
+    const res = await this.getPaginatedDocuments(db, { ...filters, limit: filters?.limit || 150 });
+    return res.data;
   }
   /**
    * Fetches a single document by ID
@@ -4723,6 +4889,56 @@ var DocumentsService = class {
 // src/storage/config.ts
 import path from "node:path";
 import fs from "node:fs";
+
+// src/config/env.ts
+function getRawEnv(key) {
+  const p = globalThis.process?.env;
+  if (!p) return void 0;
+  const val = p[key];
+  return typeof val === "string" ? val.trim() : void 0;
+}
+function loadAppConfig() {
+  const rawNodeEnv = getRawEnv("NODE_ENV") || "development";
+  const nodeEnv = rawNodeEnv === "production" || rawNodeEnv === "test" ? rawNodeEnv : "development";
+  const rawPort = getRawEnv("PORT");
+  const port = rawPort ? parseInt(rawPort, 10) : 3e3;
+  const remoteUrl = getRawEnv("TURSO_DATABASE_URL") || getRawEnv("DATABASE_URL") || getRawEnv("LIBSQL_URL");
+  const authToken = getRawEnv("TURSO_AUTH_TOKEN") || getRawEnv("DATABASE_AUTH_TOKEN");
+  const localPath = getRawEnv("SQLITE_PATH") || getRawEnv("DATABASE_PATH") || "./data/law_firm.db";
+  const isRemote = Boolean(remoteUrl && !remoteUrl.startsWith("file:"));
+  const bucketName = getRawEnv("R2_BUCKET_NAME") || getRawEnv("S3_BUCKET_NAME") || getRawEnv("AWS_S3_BUCKET");
+  const accessKeyId = getRawEnv("R2_ACCESS_KEY_ID") || getRawEnv("AWS_ACCESS_KEY_ID");
+  const secretAccessKey = getRawEnv("R2_SECRET_ACCESS_KEY") || getRawEnv("AWS_SECRET_ACCESS_KEY");
+  const accountId = getRawEnv("R2_ACCOUNT_ID");
+  const endpoint = getRawEnv("R2_ENDPOINT") || (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : getRawEnv("S3_ENDPOINT"));
+  const region = getRawEnv("AWS_REGION") || getRawEnv("R2_REGION") || "auto";
+  const publicUrl = getRawEnv("R2_PUBLIC_URL") || getRawEnv("S3_PUBLIC_URL");
+  const isCloudConfigured = Boolean(bucketName && accessKeyId && secretAccessKey);
+  return Object.freeze({
+    nodeEnv,
+    isProduction: nodeEnv === "production",
+    isTest: nodeEnv === "test",
+    port: isNaN(port) ? 3e3 : port,
+    database: Object.freeze({
+      url: remoteUrl,
+      authToken,
+      localPath,
+      isRemote
+    }),
+    storage: Object.freeze({
+      bucketName,
+      accessKeyId,
+      secretAccessKey,
+      endpoint,
+      region,
+      publicUrl,
+      isCloudConfigured
+    })
+  });
+}
+var config = loadAppConfig();
+
+// src/storage/config.ts
 var ALLOWED_MIME_TYPES = [
   "application/pdf",
   "image/jpeg",
@@ -4730,15 +4946,13 @@ var ALLOWED_MIME_TYPES = [
 ];
 var MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
 function getStorageConfig() {
-  const env = globalThis.process?.env || {};
-  const bucketName = env.R2_BUCKET_NAME || env.S3_BUCKET_NAME || env.AWS_S3_BUCKET;
-  const accessKeyId = env.R2_ACCESS_KEY_ID || env.AWS_ACCESS_KEY_ID;
-  const secretAccessKey = env.R2_SECRET_ACCESS_KEY || env.AWS_SECRET_ACCESS_KEY;
-  const accountId = env.R2_ACCOUNT_ID;
-  const endpoint = env.R2_ENDPOINT || (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : env.S3_ENDPOINT);
-  const region = env.AWS_REGION || env.R2_REGION || "auto";
-  const publicUrl = env.R2_PUBLIC_URL || env.S3_PUBLIC_URL;
-  const isCloudConfigured = Boolean(bucketName && accessKeyId && secretAccessKey);
+  const bucketName = config.storage.bucketName;
+  const accessKeyId = config.storage.accessKeyId;
+  const secretAccessKey = config.storage.secretAccessKey;
+  const endpoint = config.storage.endpoint;
+  const region = config.storage.region;
+  const publicUrl = config.storage.publicUrl;
+  const isCloudConfigured = config.storage.isCloudConfigured;
   const localUploadDir = path.resolve(process.cwd(), "data", "uploads");
   if (!isCloudConfigured) {
     try {
@@ -4814,15 +5028,15 @@ var StorageService = class {
    * Lazily initializes and caches the S3Client instance for Cloudflare R2 / AWS S3.
    */
   static getS3Client() {
-    const config2 = getStorageConfig();
-    if (!config2.isCloudConfigured) return null;
+    const config3 = getStorageConfig();
+    if (!config3.isCloudConfigured) return null;
     if (!cachedS3Client) {
       cachedS3Client = new S3Client({
-        region: config2.region,
-        endpoint: config2.endpoint,
+        region: config3.region,
+        endpoint: config3.endpoint,
         credentials: {
-          accessKeyId: config2.accessKeyId,
-          secretAccessKey: config2.secretAccessKey
+          accessKeyId: config3.accessKeyId,
+          secretAccessKey: config3.secretAccessKey
         }
       });
     }
@@ -4832,7 +5046,7 @@ var StorageService = class {
    * Uploads a file to Cloudflare R2 / AWS S3 or the local persistent storage fallback.
    */
   static async uploadFile(input) {
-    const config2 = getStorageConfig();
+    const config3 = getStorageConfig();
     const sanitizedName = this.sanitizeFilename(input.filename);
     const validation = this.validateFile(input.buffer.length, input.mimeType, sanitizedName);
     if (!validation.valid) {
@@ -4843,10 +5057,10 @@ var StorageService = class {
     const uniquePrefix = `${Date.now()}-${randHex}`;
     const storageKey = `${folder}/${uniquePrefix}-${sanitizedName}`;
     const s3 = this.getS3Client();
-    if (s3 && config2.bucketName) {
+    if (s3 && config3.bucketName) {
       await s3.send(
         new PutObjectCommand({
-          Bucket: config2.bucketName,
+          Bucket: config3.bucketName,
           Key: storageKey,
           Body: input.buffer,
           ContentType: input.mimeType,
@@ -4856,7 +5070,7 @@ var StorageService = class {
           }
         })
       );
-      const file_url = config2.publicUrl ? `${config2.publicUrl.replace(/\/$/, "")}/${storageKey}` : `/api/files/${storageKey}`;
+      const file_url = config3.publicUrl ? `${config3.publicUrl.replace(/\/$/, "")}/${storageKey}` : `/api/files/${storageKey}`;
       return {
         file_url,
         file_name: sanitizedName,
@@ -4865,7 +5079,7 @@ var StorageService = class {
         storage_key: storageKey
       };
     } else {
-      const targetPath = path2.resolve(config2.localUploadDir, storageKey);
+      const targetPath = path2.resolve(config3.localUploadDir, storageKey);
       const targetDir = path2.dirname(targetPath);
       if (!fs2.existsSync(targetDir)) {
         fs2.mkdirSync(targetDir, { recursive: true });
@@ -4884,7 +5098,7 @@ var StorageService = class {
    * Retrieves a file for streaming or preview.
    */
   static async getFile(storageKey) {
-    const config2 = getStorageConfig();
+    const config3 = getStorageConfig();
     if (!storageKey || storageKey.includes("..") || path2.isAbsolute(storageKey)) {
       throw new Error("\u0645\u0633\u0627\u0631 \u063A\u064A\u0631 \u0645\u0635\u0631\u062D \u0628\u0647");
     }
@@ -4893,11 +5107,11 @@ var StorageService = class {
       throw new Error("\u0645\u0633\u0627\u0631 \u063A\u064A\u0631 \u0645\u0635\u0631\u062D \u0628\u0647");
     }
     const s3 = this.getS3Client();
-    if (s3 && config2.bucketName) {
+    if (s3 && config3.bucketName) {
       try {
         const response = await s3.send(
           new GetObjectCommand({
-            Bucket: config2.bucketName,
+            Bucket: config3.bucketName,
             Key: normalizedKey
           })
         );
@@ -4917,7 +5131,7 @@ var StorageService = class {
         throw err;
       }
     } else {
-      const localPath = path2.resolve(config2.localUploadDir, normalizedKey);
+      const localPath = path2.resolve(config3.localUploadDir, normalizedKey);
       if (!fs2.existsSync(localPath)) {
         return null;
       }
@@ -4941,14 +5155,14 @@ var StorageService = class {
    * Deletes a file from storage.
    */
   static async deleteFile(storageKey) {
-    const config2 = getStorageConfig();
+    const config3 = getStorageConfig();
     const normalizedKey = path2.normalize(storageKey).replace(/^(\.\.(\/|\\|$))+/, "");
     const s3 = this.getS3Client();
-    if (s3 && config2.bucketName) {
+    if (s3 && config3.bucketName) {
       try {
         await s3.send(
           new DeleteObjectCommand({
-            Bucket: config2.bucketName,
+            Bucket: config3.bucketName,
             Key: normalizedKey
           })
         );
@@ -4957,7 +5171,7 @@ var StorageService = class {
         return false;
       }
     } else {
-      const localPath = path2.resolve(config2.localUploadDir, normalizedKey);
+      const localPath = path2.resolve(config3.localUploadDir, normalizedKey);
       if (fs2.existsSync(localPath)) {
         fs2.unlinkSync(localPath);
         return true;
@@ -4966,6 +5180,71 @@ var StorageService = class {
     }
   }
 };
+
+// src/utils/errors.ts
+var AppError = class extends Error {
+  statusCode;
+  details;
+  isOperational;
+  constructor(message, statusCode = 500, details) {
+    super(message);
+    this.name = this.constructor.name;
+    this.statusCode = statusCode;
+    this.details = details;
+    this.isOperational = true;
+    Error.captureStackTrace(this, this.constructor);
+  }
+};
+
+// src/utils/validators.ts
+function validateFileUploadMetadata(data) {
+  const errors = [];
+  if (!data.filename || typeof data.filename !== "string" || !data.filename.trim()) {
+    errors.push({ field: "filename", message: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0644\u0641 \u0625\u062C\u0628\u0627\u0631\u064A" });
+  } else {
+    const name = data.filename.trim();
+    if (name.length > 255) {
+      errors.push({ field: "filename", message: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0644\u0641 \u0637\u0648\u064A\u0644 \u062C\u062F\u0627\u064B (\u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 255 \u062D\u0631\u0641)" });
+    }
+    if (name.includes("\0") || name.includes("..") || /[<>:"/\\|?*]/.test(name)) {
+      errors.push({ field: "filename", message: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0644\u0641 \u064A\u062D\u062A\u0648\u064A \u0639\u0644\u0649 \u0631\u0645\u0648\u0632 \u063A\u064A\u0631 \u0645\u0633\u0645\u0648\u062D \u0628\u0647\u0627 \u0623\u0648 \u0645\u062D\u0627\u0648\u0644\u0629 \u0627\u062C\u062A\u064A\u0627\u0632 \u0645\u0633\u0627\u0631" });
+    }
+  }
+  const cleanMime = typeof data.mimeType === "string" ? data.mimeType.toLowerCase().trim() : "";
+  if (!cleanMime) {
+    errors.push({ field: "mimeType", message: "\u0646\u0648\u0639 \u0627\u0644\u0645\u0644\u0641 (MIME Type) \u0625\u062C\u0628\u0627\u0631\u064A" });
+  } else if (!ALLOWED_MIME_TYPES.includes(cleanMime)) {
+    errors.push({
+      field: "mimeType",
+      message: `\u0646\u0648\u0639 \u0627\u0644\u0645\u0644\u0641 \u063A\u064A\u0631 \u0645\u062F\u0639\u0648\u0645 (${cleanMime}). \u0627\u0644\u0635\u064A\u063A \u0627\u0644\u0645\u062F\u0639\u0648\u0645\u0629 \u0641\u0642\u0637: PDF, JPEG, PNG`
+    });
+  }
+  const size = Number(data.size);
+  if (data.size !== void 0 && (isNaN(size) || size <= 0)) {
+    errors.push({ field: "size", message: "\u062D\u062C\u0645 \u0627\u0644\u0645\u0644\u0641 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+  } else if (size > MAX_FILE_SIZE_BYTES) {
+    errors.push({
+      field: "size",
+      message: `\u062D\u062C\u0645 \u0627\u0644\u0645\u0644\u0641 (${(size / (1024 * 1024)).toFixed(1)}MB) \u064A\u062A\u062C\u0627\u0648\u0632 \u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0627\u0644\u0645\u0633\u0645\u0648\u062D \u0628\u0647 (15MB)`
+    });
+  }
+  const folder = typeof data.folder === "string" && data.folder.trim() ? data.folder.trim() : "documents";
+  if (!/^[a-zA-Z0-9_-]+$/.test(folder) || folder.length > 50) {
+    errors.push({ field: "folder", message: "\u0627\u0633\u0645 \u0627\u0644\u0645\u062C\u0644\u062F \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" });
+  }
+  if (errors.length > 0) {
+    return { success: false, errors };
+  }
+  return {
+    success: true,
+    data: {
+      filename: String(data.filename).trim(),
+      mimeType: cleanMime,
+      size: isNaN(size) ? 0 : size,
+      folder
+    }
+  };
+}
 
 // src/routes/documents.ts
 var documentRoutes = new Hono2();
@@ -5002,15 +5281,30 @@ documentRoutes.post("/upload", async (c) => {
     if (!buffer) {
       return c.json({ error: "\u0644\u0645 \u064A\u062A\u0645 \u062A\u0648\u0641\u064A\u0631 \u0623\u064A \u0645\u0644\u0641 \u0644\u0644\u0631\u0641\u0639" }, 400);
     }
-    const uploaded = await StorageService.uploadFile({
-      buffer,
+    const validation = validateFileUploadMetadata({
       filename,
       mimeType,
+      size: buffer.length,
       folder
+    });
+    if (!validation.success) {
+      return c.json({
+        error: validation.errors?.[0]?.message || "\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0644\u0641 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629",
+        details: validation.errors
+      }, 400);
+    }
+    const uploaded = await StorageService.uploadFile({
+      buffer,
+      filename: validation.data.filename,
+      mimeType: validation.data.mimeType,
+      folder: validation.data.folder
     });
     return c.json(uploaded, 201);
   } catch (err) {
-    return c.json({ error: err.message || "\u0641\u0634\u0644 \u0631\u0641\u0639 \u0627\u0644\u0645\u0644\u0641" }, 400);
+    return c.json({
+      error: err.message || "\u0641\u0634\u0644 \u0631\u0641\u0639 \u0627\u0644\u0645\u0644\u0641",
+      ...err.details ? { details: err.details } : {}
+    }, 400);
   }
 });
 documentRoutes.get("/files/:folder/:filename", async (c) => {
@@ -5056,8 +5350,12 @@ documentRoutes.delete("/files/:folder/:filename", async (c) => {
 documentRoutes.get("/documents", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
-  const documents = await DocumentsService.getDocuments(c.env.DB);
-  return c.json(documents);
+  const query = c.req.query();
+  const result = await DocumentsService.getPaginatedDocuments(c.env.DB, query);
+  if (query.all === "true" || query.all === "1" || query.raw === "true") {
+    return c.json(result.data);
+  }
+  return c.json(result);
 });
 documentRoutes.get("/documents/:id", async (c) => {
   const user = await requireUser(c);
@@ -5076,7 +5374,7 @@ documentRoutes.post("/documents", async (c) => {
     const id = await DocumentsService.createDocument(c.env.DB, body, user.id);
     return c.json({ id });
   } catch (err) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: err.message, ...err.details ? { details: err.details } : {} }, 400);
   }
 });
 documentRoutes.get("/poas", async (c) => {
@@ -5102,7 +5400,7 @@ documentRoutes.post("/poas", async (c) => {
     const id = await DocumentsService.createPoa(c.env.DB, body, user.id);
     return c.json({ id });
   } catch (err) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: err.message, ...err.details ? { details: err.details } : {} }, 400);
   }
 });
 documentRoutes.put("/poas/:id", async (c) => {
@@ -5114,7 +5412,7 @@ documentRoutes.put("/poas/:id", async (c) => {
     return c.json({ ok: true });
   } catch (err) {
     const status = err.message === "\u0627\u0644\u062A\u0648\u0643\u064A\u0644 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" ? 404 : 400;
-    return c.json({ error: err.message }, status);
+    return c.json({ error: err.message, ...err.details ? { details: err.details } : {} }, status);
   }
 });
 documentRoutes.post("/notes", async (c) => {
@@ -5125,7 +5423,7 @@ documentRoutes.post("/notes", async (c) => {
     const id = await DocumentsService.createNote(c.env.DB, body, user.id);
     return c.json({ id });
   } catch (err) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: err.message, ...err.details ? { details: err.details } : {} }, 400);
   }
 });
 
@@ -5598,16 +5896,15 @@ function renderAppLayout() {
 import path3 from "node:path";
 import fs3 from "node:fs";
 function getDatabaseConfig() {
-  const env = globalThis.process?.env || {};
-  const remoteUrl = env.TURSO_DATABASE_URL || env.DATABASE_URL || env.LIBSQL_URL;
+  const remoteUrl = config.database.url;
   if (remoteUrl && !remoteUrl.startsWith("file:")) {
     return {
       url: remoteUrl,
-      authToken: env.TURSO_AUTH_TOKEN || env.DATABASE_AUTH_TOKEN,
+      authToken: config.database.authToken,
       isRemote: true
     };
   }
-  const localPath = env.SQLITE_PATH || env.DATABASE_PATH || "./data/law_firm.db";
+  const localPath = config.database.localPath;
   const isMemory = localPath === ":memory:" || localPath === "file::memory:";
   let url = localPath;
   if (!url.startsWith("file:") && !isMemory) {
@@ -6244,10 +6541,10 @@ function getLibSqlClient(options) {
   if (cachedClient && !options) {
     return cachedClient;
   }
-  const config2 = options ? { ...getDatabaseConfig(), ...options } : getDatabaseConfig();
+  const config3 = options ? { ...getDatabaseConfig(), ...options } : getDatabaseConfig();
   const client = createClient({
-    url: config2.url,
-    authToken: config2.authToken
+    url: config3.url,
+    authToken: config3.authToken
   });
   if (!options) {
     cachedClient = client;
@@ -6298,6 +6595,12 @@ app.use("*", async (c, next) => {
   await next();
 });
 app.onError((err, c) => {
+  if (err instanceof AppError) {
+    return c.json({
+      error: err.message,
+      ...err.details ? { details: err.details } : {}
+    }, err.statusCode);
+  }
   console.error("Unhandled server error:", err);
   return c.json({ error: "\u062D\u062F\u062B \u062E\u0637\u0623 \u063A\u064A\u0631 \u0645\u062A\u0648\u0642\u0639 \u0641\u064A \u0627\u0644\u062E\u0627\u062F\u0645" }, 500);
 });
@@ -6359,11 +6662,11 @@ var app_default = app;
 var src_default = app_default;
 
 // api/entry.ts
-var config = {
+var config2 = {
   runtime: "nodejs"
 };
 var entry_default = getRequestListener(src_default.fetch);
 export {
-  config,
+  config2 as config,
   entry_default as default
 };

@@ -410,3 +410,73 @@ body {
   transform: scale(1.01);
 }
 
+/* ───────────── Pagination & Debounced Search Controls ───────────── */
+.pagination-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 1rem 0.25rem 0.5rem;
+}
+.pagination-info {
+  font-size: 13px;
+  color: rgba(11, 31, 58, 0.7);
+  font-weight: 500;
+}
+.pagination-pages {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.pagination-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 0.5rem;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid rgba(11, 31, 58, 0.15);
+  background: #FFFDF9;
+  color: var(--navy);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.pagination-btn:hover:not(:disabled) {
+  border-color: var(--gold);
+  background: #FFF8E7;
+  color: var(--ink);
+}
+.pagination-btn.active {
+  background: var(--navy) !important;
+  color: var(--gold-soft) !important;
+  border-color: var(--gold) !important;
+  box-shadow: 0 2px 8px rgba(11, 31, 58, 0.2);
+}
+.pagination-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-color: rgba(11, 31, 58, 0.08);
+}
+.pagination-ellipsis {
+  padding: 0 0.25rem;
+  color: rgba(11, 31, 58, 0.4);
+  font-size: 13px;
+}
+
+/* Skeleton Loading Feedback */
+.skeleton {
+  background: linear-gradient(90deg, rgba(201,162,39,0.06) 25%, rgba(201,162,39,0.16) 50%, rgba(201,162,39,0.06) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.4s infinite ease-in-out;
+  border-radius: 6px;
+}
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+

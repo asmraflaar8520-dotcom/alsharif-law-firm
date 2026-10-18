@@ -9,13 +9,27 @@ import {
 } from '../config/constants'
 import { escapeLike, isAllowed, cleanString } from '../utils/validation'
 import { logActivity } from '../utils/logger'
+import {
+  parsePaginationParams,
+  createPaginationEnvelope,
+  PaginationParams,
+  PaginatedResponse
+} from '../utils/pagination'
+import { SqlQueryBuilder } from '../utils/query-builder'
+import {
+  HearingsService,
+  HearingFilterParams,
+  ScheduleHearingDTO,
+  UpdateHearingDTO
+} from './hearings.service'
 
-export interface CaseFilterParams {
+export interface CaseFilterParams extends PaginationParams {
   q?: string
   status?: string
   lawyer?: string | number
   type?: string | number
   priority?: string
+  category?: string
 }
 
 export interface CreateCaseDTO {
@@ -62,82 +76,48 @@ export interface UpdateCaseDTO {
   closed_at?: string | null
 }
 
-export interface HearingFilterParams {
-  from?: string
-  to?: string
-  lawyer?: string | number
-  status?: string
-}
-
-export interface ScheduleHearingDTO {
-  case_id: number
-  hearing_date: string
-  hearing_time?: string | null
-  court_id?: number | null
-  circuit?: string | null
-  type?: string
-  purpose?: string | null
-  lawyer_id?: number | null
-  status?: string
-  notes?: string | null
-}
-
-export interface UpdateHearingDTO {
-  hearing_date?: string
-  hearing_time?: string | null
-  court_id?: number | null
-  circuit?: string | null
-  type?: string
-  purpose?: string | null
-  result?: string | null
-  next_date?: string | null
-  lawyer_id?: number | null
-  status?: string
-  notes?: string | null
-}
+export type { HearingFilterParams, ScheduleHearingDTO, UpdateHearingDTO } from './hearings.service'
 
 export class CasesService {
   /**
-   * Searches and lists cases with priority and date sorting
+   * Returns a paginated list of cases with total counts and metadata using SqlQueryBuilder
+   */
+  static async getPaginatedCases(db: D1Database, params: PaginationParams = {}): Promise<PaginatedResponse<any>> {
+    const { page, limit, offset, search } = parsePaginationParams(params)
+    const { status, lawyer, type, priority, category, client_id } = params
+
+    const qb = new SqlQueryBuilder()
+      .whereSearch(['c.title', 'c.case_no', 'cl.name', 'c.opposing_name', 'c.subject'], search)
+      .whereIf('c.status = ?', status && isAllowed(status, [...ALLOWED_CASE_STATUSES]), status)
+      .whereIf('c.lead_lawyer_id = ?', lawyer, Number(lawyer))
+      .whereIf('c.case_type_id = ?', type, Number(type))
+      .whereIf('ct.category = ?', category, cleanString(category, 50))
+      .whereIf('c.priority = ?', priority && isAllowed(priority, [...ALLOWED_CASE_PRIORITIES]), priority)
+      .whereIf('c.client_id = ?', client_id, Number(client_id))
+
+    return SqlQueryBuilder.executePaginated(db, {
+      fromClause: `cases c
+        JOIN clients cl ON cl.id=c.client_id
+        LEFT JOIN case_types ct ON ct.id=c.case_type_id
+        LEFT JOIN courts co ON co.id=c.court_id
+        LEFT JOIN users u ON u.id=c.lead_lawyer_id`,
+      selectColumns: `c.*, cl.name AS client_name, cl.type AS client_type, ct.name AS type_name, ct.category,
+        co.name AS court_name, u.name AS lawyer_name, u.initials AS lawyer_initials, u.color AS lawyer_color,
+        (SELECT MIN(hearing_date) FROM hearings h WHERE h.case_id=c.id AND h.hearing_date>=date('now') AND h.status IN ('قادمة','حجز للحكم')) AS next_hearing`,
+      whereBuilder: qb,
+      orderBy: "CASE c.priority WHEN 'عاجلة' THEN 0 WHEN 'عالية' THEN 1 WHEN 'عادية' THEN 2 ELSE 3 END, c.updated_at DESC",
+      page,
+      limit,
+      offset
+    })
+  }
+
+  /**
+   * Searches and lists cases (backward compatible array return)
    */
   static async getCases(db: D1Database, filters: CaseFilterParams = {}): Promise<any[]> {
-    const { q, status, lawyer, type, priority } = filters
-    let sql = `SELECT c.*, cl.name AS client_name, cl.type AS client_type, ct.name AS type_name, ct.category,
-      co.name AS court_name, u.name AS lawyer_name, u.initials AS lawyer_initials, u.color AS lawyer_color,
-      (SELECT MIN(hearing_date) FROM hearings h WHERE h.case_id=c.id AND h.hearing_date>=date('now') AND h.status IN ('قادمة','حجز للحكم')) AS next_hearing
-      FROM cases c
-      JOIN clients cl ON cl.id=c.client_id
-      LEFT JOIN case_types ct ON ct.id=c.case_type_id
-      LEFT JOIN courts co ON co.id=c.court_id
-      LEFT JOIN users u ON u.id=c.lead_lawyer_id
-      WHERE 1=1`
-    const binds: any[] = []
-
-    if (q) {
-      sql += ` AND (c.title LIKE ? ESCAPE '\\' OR c.case_no LIKE ? ESCAPE '\\' OR cl.name LIKE ? ESCAPE '\\' OR c.opposing_name LIKE ? ESCAPE '\\')`
-      const like = `%${escapeLike(q)}%`
-      binds.push(like, like, like, like)
-    }
-    if (status && isAllowed(status, [...ALLOWED_CASE_STATUSES])) {
-      sql += ` AND c.status = ?`
-      binds.push(status)
-    }
-    if (lawyer) {
-      sql += ` AND c.lead_lawyer_id = ?`
-      binds.push(lawyer)
-    }
-    if (type) {
-      sql += ` AND c.case_type_id = ?`
-      binds.push(type)
-    }
-    if (priority && isAllowed(priority, [...ALLOWED_CASE_PRIORITIES])) {
-      sql += ` AND c.priority = ?`
-      binds.push(priority)
-    }
-
-    sql += ` ORDER BY CASE c.priority WHEN 'عاجلة' THEN 0 WHEN 'عالية' THEN 1 WHEN 'عادية' THEN 2 ELSE 3 END, c.updated_at DESC LIMIT 150`
-    const { results } = await db.prepare(sql).bind(...binds).all()
-    return results || []
+    const res = await this.getPaginatedCases(db, { ...filters, limit: filters.limit || 150 })
+    return res.data
   }
 
   /**
@@ -275,92 +255,30 @@ export class CasesService {
   }
 
   /**
-   * Lists court session hearings
+   * Returns a paginated list of hearings with count and metadata
+   */
+  static async getPaginatedHearings(db: D1Database, params: PaginationParams = {}): Promise<PaginatedResponse<any>> {
+    return HearingsService.getPaginatedHearings(db, params)
+  }
+
+  /**
+   * Lists court session hearings (backward compatible array return)
    */
   static async getHearings(db: D1Database, filters: HearingFilterParams = {}): Promise<any[]> {
-    const from = filters.from || '2000-01-01'
-    const to = filters.to || '2099-12-31'
-    const { lawyer, status } = filters
-
-    let sql = `SELECT h.*, cs.case_no, cs.year, cs.title AS case_title, cs.priority, cl.name AS client_name, u.name AS lawyer_name, u.initials, u.color, co.name AS court_name
-      FROM hearings h
-      JOIN cases cs ON cs.id = h.case_id
-      JOIN clients cl ON cl.id = cs.client_id
-      LEFT JOIN users u ON u.id = h.lawyer_id
-      LEFT JOIN courts co ON co.id = h.court_id
-      WHERE h.hearing_date BETWEEN ? AND ?`
-    const binds: any[] = [from, to]
-
-    if (lawyer) {
-      sql += ` AND h.lawyer_id = ?`
-      binds.push(lawyer)
-    }
-    if (status && isAllowed(status, [...ALLOWED_HEARING_STATUSES])) {
-      sql += ` AND h.status = ?`
-      binds.push(status)
-    }
-
-    sql += ` ORDER BY h.hearing_date, h.hearing_time LIMIT 250`
-    const { results } = await db.prepare(sql).bind(...binds).all()
-    return results || []
+    return HearingsService.getHearings(db, filters)
   }
 
   /**
    * Schedules a court hearing
    */
   static async scheduleHearing(db: D1Database, data: ScheduleHearingDTO, currentUserId: number): Promise<number> {
-    if (!data.case_id || !data.hearing_date) {
-      throw new Error('القضية وتاريخ الجلسة مطلوبان')
-    }
-
-    const status = data.status && isAllowed(data.status, [...ALLOWED_HEARING_STATUSES]) ? data.status : 'قادمة'
-
-    const result = await db.prepare(
-      `INSERT INTO hearings (case_id, hearing_date, hearing_time, court_id, circuit, type, purpose, lawyer_id, status, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(
-      Number(data.case_id),
-      data.hearing_date,
-      data.hearing_time || null,
-      data.court_id ? Number(data.court_id) : null,
-      cleanString(data.circuit, 100),
-      cleanString(data.type, 50) || 'مرافعة',
-      cleanString(data.purpose, MAX_TEXT_LENGTH),
-      data.lawyer_id ? Number(data.lawyer_id) : null,
-      status,
-      cleanString(data.notes, MAX_NOTE_LENGTH)
-    ).run()
-
-    const id = result.meta.last_row_id as number
-    await logActivity(db, currentUserId, 'hearing', id, 'جدولة', `جلسة ${data.hearing_date}`)
-    return id
+    return HearingsService.scheduleHearing(db, data, currentUserId)
   }
 
   /**
    * Updates hearing outcome or details
    */
   static async updateHearing(db: D1Database, id: number | string, data: UpdateHearingDTO): Promise<boolean> {
-    const existing = await db.prepare(`SELECT * FROM hearings WHERE id = ?`).bind(id).first<any>()
-    if (!existing) {
-      throw new Error('الجلسة غير موجودة')
-    }
-
-    const hearing_date = data.hearing_date !== undefined ? data.hearing_date : existing.hearing_date
-    const hearing_time = data.hearing_time !== undefined ? data.hearing_time : existing.hearing_time
-    const court_id = data.court_id !== undefined ? (data.court_id ? Number(data.court_id) : null) : existing.court_id
-    const circuit = data.circuit !== undefined ? cleanString(data.circuit, 100) : existing.circuit
-    const type = data.type !== undefined ? cleanString(data.type, 50) : existing.type
-    const purpose = data.purpose !== undefined ? cleanString(data.purpose, MAX_TEXT_LENGTH) : existing.purpose
-    const result = data.result !== undefined ? cleanString(data.result, MAX_TEXT_LENGTH) : existing.result
-    const next_date = data.next_date !== undefined ? data.next_date : existing.next_date
-    const lawyer_id = data.lawyer_id !== undefined ? (data.lawyer_id ? Number(data.lawyer_id) : null) : existing.lawyer_id
-    const status = data.status !== undefined && isAllowed(data.status, [...ALLOWED_HEARING_STATUSES]) ? data.status : existing.status
-    const notes = data.notes !== undefined ? cleanString(data.notes, MAX_NOTE_LENGTH) : existing.notes
-
-    await db.prepare(
-      `UPDATE hearings SET hearing_date=?, hearing_time=?, court_id=?, circuit=?, type=?, purpose=?, result=?, next_date=?, lawyer_id=?, status=?, notes=? WHERE id=?`
-    ).bind(hearing_date, hearing_time, court_id, circuit, type, purpose, result, next_date, lawyer_id, status, notes, id).run()
-
-    return true
+    return HearingsService.updateHearing(db, id, data)
   }
 }

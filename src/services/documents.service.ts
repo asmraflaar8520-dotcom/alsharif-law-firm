@@ -4,8 +4,22 @@ import {
   MAX_TEXT_LENGTH,
   MAX_NOTE_LENGTH
 } from '../config/constants'
-import { isAllowed, cleanString } from '../utils/validation'
+import { isAllowed, cleanString, escapeLike } from '../utils/validation'
 import { logActivity } from '../utils/logger'
+import {
+  parsePaginationParams,
+  createPaginationEnvelope,
+  PaginationParams,
+  PaginatedResponse
+} from '../utils/pagination'
+import { SqlQueryBuilder } from '../utils/query-builder'
+
+export interface DocumentFilterParams extends PaginationParams {
+  doc_type?: string
+  category?: string
+  case_id?: number | string
+  client_id?: number | string
+}
 
 export interface CreateDocumentDTO {
   case_id?: number | null
@@ -70,18 +84,53 @@ export interface CreateNoteDTO {
 
 export class DocumentsService {
   /**
-   * Lists electronic files and documents
+   * Returns a paginated list of electronic files and documents using SqlQueryBuilder
    */
-  static async getDocuments(db: D1Database): Promise<any[]> {
-    const { results } = await db.prepare(
-      `SELECT d.*, cs.title AS case_title, cs.case_no, cs.year, cl.name AS client_name, u.name AS uploader
-       FROM documents d
-       LEFT JOIN cases cs ON cs.id=d.case_id
-       LEFT JOIN clients cl ON cl.id=COALESCE(d.client_id, cs.client_id)
-       LEFT JOIN users u ON u.id=d.uploaded_by
-       ORDER BY d.created_at DESC LIMIT 150`
-    ).all()
-    return results || []
+  static async getPaginatedDocuments(db: D1Database, params: PaginationParams = {}): Promise<PaginatedResponse<any>> {
+    const { page, limit, offset, search } = parsePaginationParams(params)
+    const { doc_type, category, case_id, client_id } = params
+
+    const qb = new SqlQueryBuilder()
+      .whereSearch([
+        'd.title',
+        'd.ref_no',
+        'd.file_name',
+        'cs.title',
+        'cs.case_no',
+        'cl.name'
+      ], search)
+
+    const docTypeFilter = doc_type || category
+    if (docTypeFilter) {
+      qb.where('d.doc_type = ?', cleanString(docTypeFilter, 50))
+    }
+    if (case_id) {
+      qb.where('d.case_id = ?', Number(case_id))
+    }
+    if (client_id) {
+      qb.where('COALESCE(d.client_id, cs.client_id) = ?', Number(client_id))
+    }
+
+    return SqlQueryBuilder.executePaginated(db, {
+      fromClause: `documents d
+        LEFT JOIN cases cs ON cs.id=d.case_id
+        LEFT JOIN clients cl ON cl.id=COALESCE(d.client_id, cs.client_id)
+        LEFT JOIN users u ON u.id=d.uploaded_by`,
+      selectColumns: 'd.*, cs.title AS case_title, cs.case_no, cs.year, cl.name AS client_name, u.name AS uploader',
+      whereBuilder: qb,
+      orderBy: 'd.created_at DESC',
+      page,
+      limit,
+      offset
+    })
+  }
+
+  /**
+   * Lists electronic files and documents (backward compatible array return)
+   */
+  static async getDocuments(db: D1Database, filters: any = {}): Promise<any[]> {
+    const res = await this.getPaginatedDocuments(db, { ...filters, limit: filters?.limit || 150 })
+    return res.data
   }
 
   /**

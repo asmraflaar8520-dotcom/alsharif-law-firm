@@ -7,15 +7,18 @@ export const caseRoutes = new Hono<AppContext>()
 
 /**
  * GET /api/cases
- * Controller listing cases with filters
+ * Controller listing cases with pagination and filters
  */
 caseRoutes.get('/cases', async (c) => {
   const user = await requireUser(c)
   if (user instanceof Response) return user
 
   const query = c.req.query()
-  const cases = await CasesService.getCases(c.env.DB, query)
-  return c.json(cases)
+  const result = await CasesService.getPaginatedCases(c.env.DB, query)
+  if (query.all === 'true' || query.all === '1' || query.raw === 'true') {
+    return c.json(result.data)
+  }
+  return c.json(result)
 })
 
 /**
@@ -44,7 +47,7 @@ caseRoutes.post('/cases', async (c) => {
     const id = await CasesService.createCase(c.env.DB, body, (user as User).id)
     return c.json({ id })
   } catch (err: any) {
-    return c.json({ error: err.message }, 400)
+    return c.json({ error: err.message, ...(err.details ? { details: err.details } : {}) }, 400)
   }
 })
 
@@ -83,14 +86,18 @@ caseRoutes.post('/cases/:id/lawyers', async (c) => {
 
 /**
  * GET /api/hearings
- * Controller listing court session hearings
+ * Controller listing court session hearings with pagination and filters
  */
 caseRoutes.get('/hearings', async (c) => {
   const user = await requireUser(c)
   if (user instanceof Response) return user
 
-  const hearings = await CasesService.getHearings(c.env.DB, c.req.query())
-  return c.json(hearings)
+  const query = c.req.query()
+  const result = await CasesService.getPaginatedHearings(c.env.DB, query)
+  if (query.all === 'true' || query.all === '1' || query.raw === 'true') {
+    return c.json(result.data)
+  }
+  return c.json(result)
 })
 
 /**

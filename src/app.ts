@@ -12,6 +12,7 @@ import { documentRoutes } from './routes/documents'
 import { financeRoutes } from './routes/finance'
 import { renderAppLayout } from './views/layout'
 import { getD1Database, ensureDatabaseInitialized } from './db'
+import { AppError } from './utils/errors'
 
 export const app = new Hono<AppContext>()
 
@@ -25,8 +26,14 @@ app.use('*', async (c, next) => {
   await next()
 })
 
-// Global uncaught exception handler — never leak internal details to clients
+// Global uncaught exception handler — handles domain AppError and shields internals
 app.onError((err, c) => {
+  if (err instanceof AppError) {
+    return c.json({
+      error: err.message,
+      ...(err.details ? { details: err.details } : {})
+    }, err.statusCode as any)
+  }
   console.error('Unhandled server error:', err)
   return c.json({ error: 'حدث خطأ غير متوقع في الخادم' }, 500)
 })

@@ -1,5 +1,6 @@
 import path from 'node:path'
 import fs from 'node:fs'
+import { config } from '../config/env'
 
 export interface StorageConfig {
   bucketName?: string
@@ -23,18 +24,13 @@ export const ALLOWED_MIME_TYPES = [
 export const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024 // 15 Megabytes
 
 export function getStorageConfig(): StorageConfig {
-  const env = (globalThis as any).process?.env || {}
-
-  const bucketName = env.R2_BUCKET_NAME || env.S3_BUCKET_NAME || env.AWS_S3_BUCKET
-  const accessKeyId = env.R2_ACCESS_KEY_ID || env.AWS_ACCESS_KEY_ID
-  const secretAccessKey = env.R2_SECRET_ACCESS_KEY || env.AWS_SECRET_ACCESS_KEY
-
-  const accountId = env.R2_ACCOUNT_ID
-  const endpoint = env.R2_ENDPOINT || (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : env.S3_ENDPOINT)
-  const region = env.AWS_REGION || env.R2_REGION || 'auto'
-  const publicUrl = env.R2_PUBLIC_URL || env.S3_PUBLIC_URL
-
-  const isCloudConfigured = Boolean(bucketName && accessKeyId && secretAccessKey)
+  const bucketName = config.storage.bucketName
+  const accessKeyId = config.storage.accessKeyId
+  const secretAccessKey = config.storage.secretAccessKey
+  const endpoint = config.storage.endpoint
+  const region = config.storage.region
+  const publicUrl = config.storage.publicUrl
+  const isCloudConfigured = config.storage.isCloudConfigured
 
   const localUploadDir = path.resolve(process.cwd(), 'data', 'uploads')
   if (!isCloudConfigured) {

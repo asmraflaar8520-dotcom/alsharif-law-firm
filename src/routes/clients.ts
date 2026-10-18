@@ -7,17 +7,18 @@ export const clientRoutes = new Hono<AppContext>()
 
 /**
  * GET /api/clients
- * Controller listing clients with optional keyword and status filtering
+ * Controller listing clients with pagination and filters
  */
 clientRoutes.get('/', async (c) => {
   const user = await requireUser(c)
   if (user instanceof Response) return user
 
-  const clients = await ClientsService.getClients(c.env.DB, {
-    q: c.req.query('q'),
-    status: c.req.query('status')
-  })
-  return c.json(clients)
+  const query = c.req.query()
+  const result = await ClientsService.getPaginatedClients(c.env.DB, query)
+  if (query.all === 'true' || query.all === '1' || query.raw === 'true') {
+    return c.json(result.data)
+  }
+  return c.json(result)
 })
 
 /**
@@ -46,7 +47,7 @@ clientRoutes.post('/', async (c) => {
     const id = await ClientsService.createClient(c.env.DB, body, (user as User).id)
     return c.json({ id })
   } catch (err: any) {
-    return c.json({ error: err.message }, 400)
+    return c.json({ error: err.message, ...(err.details ? { details: err.details } : {}) }, 400)
   }
 })
 

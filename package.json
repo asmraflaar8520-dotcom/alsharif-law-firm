@@ -14,6 +14,7 @@
     "db:seed": "tsx scripts/seed.ts",
     "db:verify": "tsx scripts/verify-database.ts",
     "storage:verify": "tsx scripts/verify-storage.ts",
+    "pagination:verify": "tsx scripts/verify-pagination.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"test/**/*.test.mjs\""
   },

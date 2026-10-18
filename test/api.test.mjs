@@ -567,6 +567,59 @@ test('Law Office Web Application Integration & Security Test Suite', async (t) =
     assert.equal(doc.storage_key, uploadedFileResult.storage_key)
   })
 
+  // 8.5 Phase 3: Server-Side Pagination, Envelope & Backward Compatibility
+  await t.test('Pagination: Server-side pagination envelopes and query parameters', async () => {
+    // 1. Cases pagination
+    const casesRes = await fetch(`${BASE_URL}/api/cases?page=1&limit=2`, {
+      headers: { Cookie: authCookie },
+    })
+    assert.equal(casesRes.status, 200)
+    const casesBody = await casesRes.json()
+    assert.ok(Array.isArray(casesBody.data), 'Cases response has data array')
+    assert.equal(casesBody.data.length, 2, 'Cases page 1 respects limit 2')
+    assert.ok(casesBody.pagination, 'Cases response has pagination envelope')
+    assert.equal(casesBody.pagination.page, 1)
+    assert.equal(casesBody.pagination.limit, 2)
+    assert.ok(casesBody.pagination.total >= 2)
+    assert.equal(typeof casesBody.pagination.hasMore, 'boolean')
+
+    // 2. Backward compatibility raw array with all=1
+    const rawCasesRes = await fetch(`${BASE_URL}/api/cases?all=1`, {
+      headers: { Cookie: authCookie },
+    })
+    assert.equal(rawCasesRes.status, 200)
+    const rawCasesBody = await rawCasesRes.json()
+    assert.ok(Array.isArray(rawCasesBody), 'all=1 returns flat array directly')
+
+    // 3. Clients pagination
+    const clientsRes = await fetch(`${BASE_URL}/api/clients?page=1&limit=2`, {
+      headers: { Cookie: authCookie },
+    })
+    assert.equal(clientsRes.status, 200)
+    const clientsBody = await clientsRes.json()
+    assert.ok(Array.isArray(clientsBody.data), 'Clients response has data array')
+    assert.ok(clientsBody.pagination, 'Clients response has pagination envelope')
+    assert.equal(clientsBody.pagination.limit, 2)
+
+    // 4. Documents pagination
+    const docsRes = await fetch(`${BASE_URL}/api/documents?page=1&limit=2`, {
+      headers: { Cookie: authCookie },
+    })
+    assert.equal(docsRes.status, 200)
+    const docsBody = await docsRes.json()
+    assert.ok(Array.isArray(docsBody.data), 'Documents response has data array')
+    assert.ok(docsBody.pagination, 'Documents response has pagination envelope')
+
+    // 5. Hearings pagination
+    const hearingsRes = await fetch(`${BASE_URL}/api/hearings?page=1&limit=2`, {
+      headers: { Cookie: authCookie },
+    })
+    assert.equal(hearingsRes.status, 200)
+    const hearingsBody = await hearingsRes.json()
+    assert.ok(Array.isArray(hearingsBody.data), 'Hearings response has data array')
+    assert.ok(hearingsBody.pagination, 'Hearings response has pagination envelope')
+  })
+
   // 9. Session Termination
   await t.test('Auth: Logout cleanly terminates session', async () => {
     const res = await fetch(`${BASE_URL}/api/logout`, {

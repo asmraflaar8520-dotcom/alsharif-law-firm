@@ -11,6 +11,22 @@ const state = {
   activeCase: null,
   toastTimer: null,
   charts: {},
+  // Phase 3 Server-Side Pagination & Search State
+  casesPage: 1,
+  casesLimit: 20,
+  casesFilters: {},
+  clientsPage: 1,
+  clientsLimit: 18,
+  clientsSearch: '',
+  docsPage: 1,
+  docsLimit: 18,
+  docsSearch: '',
+  docsType: '',
+  hearingsPage: 1,
+  hearingsLimit: 20,
+  hearingsSearch: '',
+  hearingsStatus: '',
+  hearingsTab: 'calendar',
 };
 
 const ROLE = {
@@ -72,6 +88,112 @@ function avatar(u, size = 36) {
   return `<span class="inline-flex items-center justify-center rounded-full text-white font-bold shrink-0 shadow-sm" style="width:${size}px;height:${size}px;background:${col};font-size:${Math.round(size * 0.34)}px">${ini}</span>`;
 }
 function caseRef(c) { return `${esc(c.case_no)} / ${esc(c.year)}`; }
+
+function normalizePaginated(res, defaultLimit = 20) {
+  if (Array.isArray(res)) {
+    return {
+      data: res,
+      pagination: {
+        total: res.length,
+        page: 1,
+        limit: defaultLimit,
+        totalPages: Math.ceil(res.length / defaultLimit) || 1,
+        hasMore: false,
+      }
+    };
+  }
+  return {
+    data: res?.data || [],
+    pagination: res?.pagination || {
+      total: 0,
+      page: 1,
+      limit: defaultLimit,
+      totalPages: 0,
+      hasMore: false,
+    }
+  };
+}
+
+function paginationBar(pagination, target) {
+  if (!pagination || pagination.total === 0) return '';
+  const { page, totalPages, total, limit } = pagination;
+  if (totalPages <= 1) {
+    return `
+      <div class="pagination-container" data-pagination-target="${target}">
+        <div class="pagination-info">إجمالي السجلات: <b>${formatNum(total)}</b></div>
+      </div>
+    `;
+  }
+  const startItem = (page - 1) * limit + 1;
+  const endItem = Math.min(page * limit, total);
+
+  const pages = [];
+  const delta = 1;
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || (i >= page - delta && i <= page + delta)) {
+      pages.push(i);
+    } else if (pages[pages.length - 1] !== '...') {
+      pages.push('...');
+    }
+  }
+
+  return `
+    <div class="pagination-container" data-pagination-target="${target}">
+      <div class="pagination-info">
+        عرض <b>${formatNum(startItem)} - ${formatNum(endItem)}</b> من إجمالي <b>${formatNum(total)}</b>
+      </div>
+      <div class="pagination-pages">
+        <button type="button" class="pagination-btn" data-page-btn="${page - 1}" ${page <= 1 ? 'disabled' : ''} title="الصفحة السابقة">
+          <i class="fas fa-chevron-right ml-1"></i> السابق
+        </button>
+        ${pages.map((p) => {
+          if (p === '...') return `<span class="pagination-ellipsis">...</span>`;
+          return `<button type="button" class="pagination-btn ${p === page ? 'active' : ''}" data-page-btn="${p}">${p}</button>`;
+        }).join('')}
+        <button type="button" class="pagination-btn" data-page-btn="${page + 1}" ${page >= totalPages ? 'disabled' : ''} title="الصفحة التالية">
+          التالي <i class="fas fa-chevron-left mr-1"></i>
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function tableSkeleton(rows = 6) {
+  return `
+    <div class="paper-card rounded-xl overflow-hidden p-4">
+      <div class="space-y-3">
+        ${Array.from({ length: rows }).map(() => `
+          <div class="flex items-center gap-3 py-2 border-b gold-hairline">
+            <div class="h-5 skeleton w-1/6"></div>
+            <div class="h-5 skeleton w-2/6"></div>
+            <div class="h-5 skeleton w-1/6"></div>
+            <div class="h-5 skeleton w-1/6"></div>
+            <div class="h-5 skeleton w-1/6"></div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function gridSkeleton(cards = 6) {
+  return `
+    <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+      ${Array.from({ length: cards }).map(() => `
+        <div class="paper-card rounded-xl p-4 md:p-5 space-y-3">
+          <div class="flex justify-between">
+            <div class="h-4 skeleton w-1/3"></div>
+            <div class="h-4 skeleton w-16"></div>
+          </div>
+          <div class="h-6 skeleton w-3/4"></div>
+          <div class="h-4 skeleton w-1/2"></div>
+          <div class="h-8 skeleton w-full mt-4"></div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -410,24 +532,49 @@ function drawTypeChart(d) {
 
 /* ───────────── Cases ───────────── */
 async function viewCases() {
-  const list = await api('/api/cases');
+  const p = new URLSearchParams();
+  p.set('page', state.casesPage || 1);
+  p.set('limit', state.casesLimit || 20);
+  if (state.casesFilters?.q) p.set('q', state.casesFilters.q);
+  if (state.casesFilters?.status) p.set('status', state.casesFilters.status);
+  if (state.casesFilters?.priority) p.set('priority', state.casesFilters.priority);
+  if (state.casesFilters?.lawyer) p.set('lawyer', state.casesFilters.lawyer);
+  if (state.casesFilters?.type) p.set('type', state.casesFilters.type);
+
+  const res = await api('/api/cases?' + p.toString());
+  const norm = normalizePaginated(res, state.casesLimit || 20);
+  const list = norm.data;
+  const pagination = norm.pagination;
   const L = state.lookups;
+
   return `
-    ${pageHead('سجل القضايا', `${list.length} قضية في الأرشيف الحي للمكتب.`, `
+    ${pageHead('سجل القضايا', `${formatNum(pagination.total)} قضية في الأرشيف الحي للمكتب.`, `
       <button id="new-case" class="btn-gold"><i class="fas fa-plus ml-1"></i> قيد قضية جديدة</button>
     `)}
     <div class="paper-card rounded-xl p-3 md:p-4 mb-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2">
-      <input id="f-q" class="input-lux" placeholder="بحث بالرقم أو الخصم أو الموكل"/>
-      <select id="f-status" class="input-lux"><option value="">كل الحالات</option>${['متداولة', 'محجوزة للحكم', 'موقوفة', 'منتهية'].map((s) => `<option>${s}</option>`).join('')}</select>
-      <select id="f-pri" class="input-lux"><option value="">كل الأولويات</option>${['عاجلة', 'عالية', 'عادية', 'منخفضة'].map((s) => `<option>${s}</option>`).join('')}</select>
-      <select id="f-lawyer" class="input-lux"><option value="">كل المحامين</option>${L.users.map((u) => `<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select>
-      <select id="f-type" class="input-lux"><option value="">كل الأنواع</option>${L.case_types.map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select>
+      <input id="f-q" class="input-lux" placeholder="بحث بالرقم أو الخصم أو الموكل" value="${esc(state.casesFilters?.q || '')}"/>
+      <select id="f-status" class="input-lux">
+        <option value="">كل الحالات</option>
+        ${['متداولة', 'محجوزة للحكم', 'موقوفة', 'منتهية'].map((s) => `<option value="${s}" ${state.casesFilters?.status === s ? 'selected' : ''}>${s}</option>`).join('')}
+      </select>
+      <select id="f-pri" class="input-lux">
+        <option value="">كل الأولويات</option>
+        ${['عاجلة', 'عالية', 'عادية', 'منخفضة'].map((s) => `<option value="${s}" ${state.casesFilters?.priority === s ? 'selected' : ''}>${s}</option>`).join('')}
+      </select>
+      <select id="f-lawyer" class="input-lux">
+        <option value="">كل المحامين</option>
+        ${L.users.map((u) => `<option value="${u.id}" ${state.casesFilters?.lawyer == u.id ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}
+      </select>
+      <select id="f-type" class="input-lux">
+        <option value="">كل الأنواع</option>
+        ${L.case_types.map((t) => `<option value="${t.id}" ${state.casesFilters?.type == t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
+      </select>
     </div>
-    <div id="cases-table">${casesTable(list)}</div>`;
+    <div id="cases-table">${casesTable(list, pagination)}</div>`;
 }
 
-function casesTable(list) {
-  if (!list.length) return empty('fa-gavel', 'لا قضايا مطابقة', 'غيّر عوامل التصفية أو قيد قضية جديدة.');
+function casesTable(list, pagination) {
+  if (!list || !list.length) return empty('fa-gavel', 'لا قضايا مطابقة', 'غيّر عوامل التصفية أو قيد قضية جديدة.');
   return `<div class="paper-card rounded-xl overflow-hidden">
     <div class="overflow-x-auto">
       <table class="w-full text-sm">
@@ -451,7 +598,8 @@ function casesTable(list) {
         </tbody>
       </table>
     </div>
-  </div>`;
+  </div>
+  ${pagination ? paginationBar(pagination, 'cases') : ''}`;
 }
 
 async function viewCase() {
@@ -566,61 +714,171 @@ function caseTab(c, tab) {
     ${c.poas.length ? `<div class="mt-4"><h4 class="font-semibold mb-2">التوكيلات المرتبطة</h4>${c.poas.map((p) => `<div class="paper-card rounded-xl p-3 mb-2 text-sm flex justify-between"><span>${esc(p.poa_no)} · ${esc(p.type)}</span>${chip(p.status)}</div>`).join('')}</div>` : ''}`;
 }
 
-/* ───────────── Hearings calendar ───────────── */
+/* ───────────── Hearings calendar & table ───────────── */
 async function viewHearings() {
+  const currentTab = state.hearingsTab || 'calendar';
   const from = new Date(); from.setDate(1);
   const to = new Date(from.getFullYear(), from.getMonth() + 3, 0);
-  const list = await api(`/api/hearings?from=${todayISO(from)}&to=${todayISO(to)}`);
+
+  // Agenda data (with all=1 for full continuous calendar view)
+  const agendaRes = await api(`/api/hearings?from=${todayISO(from)}&to=${todayISO(to)}&all=1`);
+  const agendaList = Array.isArray(agendaRes) ? agendaRes : (agendaRes.data || []);
+
+  // Paginated table data
+  const p = new URLSearchParams();
+  p.set('page', state.hearingsPage || 1);
+  p.set('limit', state.hearingsLimit || 20);
+  if (state.hearingsSearch) p.set('search', state.hearingsSearch);
+  if (state.hearingsStatus) p.set('status', state.hearingsStatus);
+
+  const tableRes = await api('/api/hearings?' + p.toString());
+  const normTable = normalizePaginated(tableRes, state.hearingsLimit || 20);
+  const tableList = normTable.data;
+  const tablePagination = normTable.pagination;
+
   const today = todayISO();
   const groups = {};
-  list.forEach((h) => { (groups[h.hearing_date] ||= []).push(h); });
+  agendaList.forEach((h) => { (groups[h.hearing_date] ||= []).push(h); });
   const days = [];
   const start = new Date(); start.setDate(start.getDate() - 1);
   for (let i = 0; i < 21; i++) {
     const d = new Date(start); d.setDate(start.getDate() + i);
     days.push(todayISO(d));
   }
+
   return `
-    ${pageHead('أجندة الجلسات', 'ثلاثة أسابيع قادمة — المحاكم، التحكيم، والتنفيذ.', `<button id="new-hearing" class="btn-gold">قيد جلسة</button>`)}
-    <div class="grid lg:grid-cols-3 gap-4">
-      <div class="lg:col-span-2 space-y-3">
-        ${days.map((d) => {
-          const items = groups[d] || [];
-          const isT = d === today;
-          return `<section class="paper-card rounded-xl p-3 md:p-4 ${isT ? 'ring-1 ring-gold-500' : ''}">
-            <div class="flex items-center justify-between mb-2">
-              <h3 class="font-amiri text-lg md:text-xl">${arDate(d)}${isT ? ' · اليوم' : ''}</h3>
-              <span class="text-xs text-navy-700/50">${items.length} جلسة</span>
-            </div>
-            ${items.length ? items.map((h) => `
-              <button data-go="case" data-id="${h.case_id}" class="w-full text-right border-t gold-hairline py-3 hover:bg-navy-900/[.03] transition">
-                <div class="flex justify-between gap-2">
-                  <div>
-                    <div class="font-semibold text-xs md:text-sm">${esc(h.hearing_time || '—')} · ${esc(h.type)} — ${caseRef(h)}</div>
-                    <div class="text-xs md:text-sm text-navy-800">${esc(h.case_title)}</div>
-                    <div class="text-[11px] text-navy-700/50">${esc(h.court_name || h.circuit || '')} · ${esc(h.lawyer_name || '')}</div>
+    ${pageHead('أجندة وسجل الجلسات', `${formatNum(tablePagination.total)} جلسة مسجلة بالمكتب.`, `
+      <button id="new-hearing" class="btn-gold">قيد جلسة جديدة</button>
+    `)}
+    <div class="flex gap-2 mb-4 border-b gold-hairline pb-2">
+      <button type="button" class="px-4 py-2 text-sm font-bold rounded-lg transition ${currentTab === 'calendar' ? 'bg-navy-900 text-gold-soft' : 'bg-transparent text-navy-800 hover:bg-navy-900/5'}" data-hearings-tab="calendar">
+        <i class="fas fa-calendar-alt ml-1"></i> التقويم والأجندة
+      </button>
+      <button type="button" class="px-4 py-2 text-sm font-bold rounded-lg transition ${currentTab === 'table' ? 'bg-navy-900 text-gold-soft' : 'bg-transparent text-navy-800 hover:bg-navy-900/5'}" data-hearings-tab="table">
+        <i class="fas fa-list-ul ml-1"></i> جدول الجلسات والبحث (${formatNum(tablePagination.total)})
+      </button>
+    </div>
+
+    <!-- Calendar View -->
+    <div id="hearings-calendar-view" class="${currentTab === 'calendar' ? '' : 'hidden'}">
+      <div class="grid lg:grid-cols-3 gap-4">
+        <div class="lg:col-span-2 space-y-3">
+          ${days.map((d) => {
+            const items = groups[d] || [];
+            const isT = d === today;
+            return `<section class="paper-card rounded-xl p-3 md:p-4 ${isT ? 'ring-1 ring-gold-500' : ''}">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="font-amiri text-lg md:text-xl">${arDate(d)}${isT ? ' · اليوم' : ''}</h3>
+                <span class="text-xs text-navy-700/50">${items.length} جلسة</span>
+              </div>
+              ${items.length ? items.map((h) => `
+                <button data-go="case" data-id="${h.case_id}" class="w-full text-right border-t gold-hairline py-3 hover:bg-navy-900/[.03] transition">
+                  <div class="flex justify-between gap-2">
+                    <div>
+                      <div class="font-semibold text-xs md:text-sm">${esc(h.hearing_time || '—')} · ${esc(h.type)} — ${caseRef(h)}</div>
+                      <div class="text-xs md:text-sm text-navy-800">${esc(h.case_title)}</div>
+                      <div class="text-[11px] text-navy-700/50">${esc(h.court_name || h.circuit || '')} · ${esc(h.lawyer_name || '')}</div>
+                    </div>
+                    ${chip(h.status)}
                   </div>
-                  ${chip(h.status)}
-                </div>
-              </button>`).join('') : `<p class="text-xs md:text-sm text-navy-700/40">لا جلسات</p>`}
-          </section>`;
-        }).join('')}
+                </button>`).join('') : `<p class="text-xs md:text-sm text-navy-700/40">لا جلسات</p>`}
+            </section>`;
+          }).join('')}
+        </div>
+        <aside class="paper-card rounded-xl p-4 md:p-5 h-fit sticky top-24">
+          <h3 class="font-amiri text-xl mb-3">توزيع المحامين</h3>
+          ${Object.entries(agendaList.reduce((a, h) => { a[h.lawyer_name || 'غير معيّن'] = (a[h.lawyer_name || 'غير معيّن'] || 0) + 1; return a; }, {})).map(([n, v]) => `
+            <div class="flex justify-between text-sm py-1.5 border-b gold-hairline"><span>${esc(n)}</span><b>${v}</b></div>`).join('')}
+        </aside>
       </div>
-      <aside class="paper-card rounded-xl p-4 md:p-5 h-fit sticky top-24">
-        <h3 class="font-amiri text-xl mb-3">توزيع المحامين</h3>
-        ${Object.entries(list.reduce((a, h) => { a[h.lawyer_name || 'غير معيّن'] = (a[h.lawyer_name || 'غير معيّن'] || 0) + 1; return a; }, {})).map(([n, v]) => `
-          <div class="flex justify-between text-sm py-1.5 border-b gold-hairline"><span>${esc(n)}</span><b>${v}</b></div>`).join('')}
-      </aside>
-    </div>`;
+    </div>
+
+    <!-- Table View with Pagination & Debounced Search -->
+    <div id="hearings-table-view" class="${currentTab === 'table' ? '' : 'hidden'}">
+      <div class="paper-card rounded-xl p-3 md:p-4 mb-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <input id="hearing-q" class="input-lux sm:col-span-2" placeholder="بحث بالدعوى، المحكمة، الدائرة، أو المحامي..." value="${esc(state.hearingsSearch || '')}"/>
+        <select id="hearing-status-filter" class="input-lux">
+          <option value="">كل الحالات</option>
+          ${['قادمة', 'تمت', 'تأجيل', 'حجز للحكم', 'شطب'].map((s) => `<option value="${s}" ${state.hearingsStatus === s ? 'selected' : ''}>${s}</option>`).join('')}
+        </select>
+      </div>
+      <div id="hearings-table-container">
+        ${hearingsTable(tableList, tablePagination)}
+      </div>
+    </div>
+  `;
+}
+
+function hearingsTable(list, pagination) {
+  if (!list || !list.length) return empty('fa-calendar-times', 'لا توجد جلسات مطابقة', 'غيّر عوامل التصفية أو قيد جلسة جديدة.');
+  return `
+    <div class="paper-card rounded-xl overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-navy-900 text-ivory/80 text-xs">
+            <tr>
+              <th class="text-right p-3">التاريخ والوقت</th>
+              <th class="text-right">الدعوى</th>
+              <th class="text-right">المحكمة والدائرة</th>
+              <th class="text-right">المحامي الحاضر</th>
+              <th class="text-right">الغرض / القرار</th>
+              <th class="text-right">الحالة</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${list.map((h) => `
+              <tr class="ledger-row border-t gold-hairline cursor-pointer" data-go="case" data-id="${h.case_id}">
+                <td class="p-3 whitespace-nowrap">
+                  <div class="font-bold text-navy-900">${arDate(h.hearing_date)}</div>
+                  <div class="text-[11px] text-navy-700/50">${esc(h.hearing_time || 'صباحاً')}</div>
+                </td>
+                <td>
+                  <div class="font-semibold">${caseRef(h)}</div>
+                  <div class="text-xs text-navy-700/60 truncate">${esc(h.case_title)}</div>
+                </td>
+                <td>
+                  <div>${esc(h.court_name || '—')}</div>
+                  <div class="text-[11px] text-navy-700/50">${esc(h.circuit || '—')}</div>
+                </td>
+                <td>
+                  <span class="inline-flex items-center gap-2">
+                    ${avatar({ initials: h.initials, color: h.color }, 24)}
+                    ${esc(h.lawyer_name || 'غير معيّن')}
+                  </span>
+                </td>
+                <td>
+                  <div class="text-xs">${esc(h.purpose || h.result || '—')}</div>
+                </td>
+                <td class="p-3 whitespace-nowrap">${chip(h.status)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    ${pagination ? paginationBar(pagination, 'hearings') : ''}
+  `;
 }
 
 /* ───────────── Clients ───────────── */
 async function viewClients() {
-  const list = await api('/api/clients');
+  const p = new URLSearchParams();
+  p.set('page', state.clientsPage || 1);
+  p.set('limit', state.clientsLimit || 18);
+  if (state.clientsSearch) p.set('q', state.clientsSearch);
+
+  const res = await api('/api/clients?' + p.toString());
+  const norm = normalizePaginated(res, state.clientsLimit || 18);
+  const list = norm.data;
+  const pagination = norm.pagination;
+
   return `
-    ${pageHead('الموكلون', 'أفراد وشركات وهيئات.', `<button id="new-client" class="btn-gold">موكل جديد</button>`)}
-    <input id="client-q" class="input-lux mb-4 max-w-md" placeholder="بحث بالاسم أو الرقم القومي أو الهاتف"/>
-    <div id="client-grid" class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">${clientCards(list)}</div>`;
+    ${pageHead('الموكلون', `${formatNum(pagination.total)} موكل مسجل (أفراد وشركات وهيئات).`, `<button id="new-client" class="btn-gold">موكل جديد</button>`)}
+    <input id="client-q" class="input-lux mb-4 max-w-md" placeholder="بحث بالاسم أو الرقم القومي أو الهاتف" value="${esc(state.clientsSearch || '')}"/>
+    <div id="client-section">
+      <div id="client-grid" class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">${clientCards(list)}</div>
+      ${paginationBar(pagination, 'clients')}
+    </div>`;
 }
 
 function clientCards(list) {
@@ -737,32 +995,57 @@ async function viewPoas() {
 }
 
 async function viewDocuments() {
-  const list = await api('/api/documents');
-  return `${pageHead('أرشيف المستندات', 'صحف، مذكرات، أحكام، عقود.', `<button id="add-doc" class="btn-gold">قيد مستند</button>`)}
-    <div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">${list.map((d) => `
-      <article class="paper-card rounded-xl p-4 flex flex-col justify-between">
-        <div>
-          <div class="flex items-center justify-between">
-            <span class="text-xs text-gold-700 font-semibold">${esc(d.doc_type)}</span>
-            ${d.file_url ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium"><i class="fas fa-paperclip ml-1"></i>مرفق ملف</span>` : `<span class="text-[11px] text-navy-700/40">بدون ملف</span>`}
-          </div>
-          <div class="font-semibold mt-1 text-navy-950">${esc(d.title)}</div>
-          <div class="text-xs text-navy-700/60 mt-1">${d.case_no ? caseRef(d) + ' · ' : ''}${esc(d.client_name || '')}</div>
-          ${d.file_name ? `<div class="text-xs text-navy-700/50 mt-2 truncate flex items-center gap-1"><i class="fas fa-file text-gold-600"></i> ${esc(d.file_name)} ${d.file_size ? `(${formatDocSize(d.file_size)})` : ''}</div>` : ''}
+  const p = new URLSearchParams();
+  p.set('page', state.docsPage || 1);
+  p.set('limit', state.docsLimit || 18);
+  if (state.docsSearch) p.set('search', state.docsSearch);
+  if (state.docsType) p.set('category', state.docsType);
+
+  const res = await api('/api/documents?' + p.toString());
+  const norm = normalizePaginated(res, state.docsLimit || 18);
+  const list = norm.data;
+  const pagination = norm.pagination;
+
+  return `${pageHead('أرشيف المستندات', `${formatNum(pagination.total)} مستند محفوظ (صحف، مذكرات، أحكام، عقود).`, `<button id="add-doc" class="btn-gold">قيد مستند</button>`)}
+    <div class="paper-card rounded-xl p-3 md:p-4 mb-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <input id="doc-q" class="input-lux sm:col-span-2" placeholder="بحث بعنوان المستند أو رقم الإشارة أو اسم القضية أو الموكل" value="${esc(state.docsSearch || '')}"/>
+      <select id="doc-type-filter" class="input-lux">
+        <option value="">كل أنواع المستندات</option>
+        ${['صحيفة دعوى', 'مذكرة دفاع', 'حكم قضائي', 'عقد', 'مستند إثبات', 'محضر شرطة', 'تقرير خبير', 'أخرى'].map((t) => `<option value="${t}" ${state.docsType === t ? 'selected' : ''}>${t}</option>`).join('')}
+      </select>
+    </div>
+    <div id="docs-section">
+      <div id="docs-grid" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">${docCards(list)}</div>
+      ${paginationBar(pagination, 'docs')}
+    </div>`;
+}
+
+function docCards(list) {
+  if (!list || !list.length) return empty('fa-folder-open', 'لا توجد مستندات بعد', 'غيّر عوامل التصفية أو قيد مستنداً جديداً.');
+  return list.map((d) => `
+    <article class="paper-card rounded-xl p-4 flex flex-col justify-between">
+      <div>
+        <div class="flex items-center justify-between">
+          <span class="text-xs text-gold-700 font-semibold">${esc(d.doc_type)}</span>
+          ${d.file_url ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium"><i class="fas fa-paperclip ml-1"></i>مرفق ملف</span>` : `<span class="text-[11px] text-navy-700/40">بدون ملف</span>`}
         </div>
-        <div class="mt-4 pt-3 border-t gold-hairline flex items-center justify-between gap-2">
-          ${d.file_url ? `
-            <button type="button" class="btn-ghost text-xs py-1.5 px-3 flex items-center gap-1.5 text-navy-900" data-preview-url="${esc(d.file_url)}" data-preview-title="${esc(d.title)}" data-preview-mime="${esc(d.mime_type || '')}">
-              <i class="fas fa-eye text-gold-600"></i> معاينة المستند
-            </button>
-            <a href="${esc(d.file_url)}?download=1" download class="btn-gold text-xs py-1.5 px-3 flex items-center gap-1.5" title="تحميل">
-              <i class="fas fa-download"></i> تحميل
-            </a>
-          ` : `
-            <span class="text-xs text-navy-700/40">لا يوجد ملف مرفق</span>
-          `}
-        </div>
-      </article>`).join('') || empty('fa-folder-open', 'لا توجد مستندات بعد', '')}</div>`;
+        <div class="font-semibold mt-1 text-navy-950">${esc(d.title)}</div>
+        <div class="text-xs text-navy-700/60 mt-1">${d.case_no ? caseRef(d) + ' · ' : ''}${esc(d.client_name || '')}</div>
+        ${d.file_name ? `<div class="text-xs text-navy-700/50 mt-2 truncate flex items-center gap-1"><i class="fas fa-file text-gold-600"></i> ${esc(d.file_name)} ${d.file_size ? `(${formatDocSize(d.file_size)})` : ''}</div>` : ''}
+      </div>
+      <div class="mt-4 pt-3 border-t gold-hairline flex items-center justify-between gap-2">
+        ${d.file_url ? `
+          <button type="button" class="btn-ghost text-xs py-1.5 px-3 flex items-center gap-1.5 text-navy-900" data-preview-url="${esc(d.file_url)}" data-preview-title="${esc(d.title)}" data-preview-mime="${esc(d.mime_type || '')}">
+            <i class="fas fa-eye text-gold-600"></i> معاينة المستند
+          </button>
+          <a href="${esc(d.file_url)}?download=1" download class="btn-gold text-xs py-1.5 px-3 flex items-center gap-1.5" title="تحميل">
+            <i class="fas fa-download"></i> تحميل
+          </a>
+        ` : `
+          <span class="text-xs text-navy-700/40">لا يوجد ملف مرفق</span>
+        `}
+      </div>
+    </article>`).join('');
 }
 
 async function viewTime() {
@@ -1364,7 +1647,8 @@ async function ensureCasesMini() {
     if (state.lookups?.cases?.length) {
       state.cache.casesMini = state.lookups.cases.map((c) => ({ id: c.id, title: `${c.case_no}/${c.year} — ${c.title}` }));
     } else {
-      const list = await api('/api/cases');
+      const res = await api('/api/cases?all=1');
+      const list = Array.isArray(res) ? res : (res?.data || []);
       state.cache.casesMini = list.map((c) => ({ id: c.id, title: `${c.case_no}/${c.year} — ${c.title}` }));
     }
   }
@@ -1939,31 +2223,228 @@ function bindView() {
     }
   }));
 
-  const fq = $('#f-q');
-  if (fq) {
-    const run = async () => {
+  // ─── Phase 3: Cases Pagination & Debounced Search ───
+  const casesTableEl = $('#cases-table');
+  if (casesTableEl) {
+    const runCases = async () => {
       const p = new URLSearchParams();
-      if ($('#f-q').value) p.set('q', $('#f-q').value);
-      if ($('#f-status').value) p.set('status', $('#f-status').value);
-      if ($('#f-pri').value) p.set('priority', $('#f-pri').value);
-      if ($('#f-lawyer').value) p.set('lawyer', $('#f-lawyer').value);
-      if ($('#f-type').value) p.set('type', $('#f-type').value);
-      const list = await api('/api/cases?' + p.toString());
-      $('#cases-table').innerHTML = casesTable(list);
+      p.set('page', state.casesPage || 1);
+      p.set('limit', state.casesLimit || 20);
+      if (state.casesFilters?.q) p.set('q', state.casesFilters.q);
+      if (state.casesFilters?.status) p.set('status', state.casesFilters.status);
+      if (state.casesFilters?.priority) p.set('priority', state.casesFilters.priority);
+      if (state.casesFilters?.lawyer) p.set('lawyer', state.casesFilters.lawyer);
+      if (state.casesFilters?.type) p.set('type', state.casesFilters.type);
+
+      const res = await api('/api/cases?' + p.toString());
+      const norm = normalizePaginated(res, state.casesLimit || 20);
+      casesTableEl.innerHTML = casesTable(norm.data, norm.pagination);
       $$('#cases-table [data-go]').forEach((b) => b.addEventListener('click', () => go(b.dataset.go, { id: b.dataset.id })));
     };
-    ['f-q', 'f-status', 'f-pri', 'f-lawyer', 'f-type'].forEach((id) => $('#' + id)?.addEventListener('change', run));
-    $('#f-q')?.addEventListener('input', () => { clearTimeout(state._ft); state._ft = setTimeout(run, 250); });
+
+    const onCasesFilterChange = () => {
+      state.casesPage = 1;
+      state.casesFilters = {
+        q: $('#f-q')?.value.trim() || '',
+        status: $('#f-status')?.value || '',
+        priority: $('#f-pri')?.value || '',
+        lawyer: $('#f-lawyer')?.value || '',
+        type: $('#f-type')?.value || ''
+      };
+      casesTableEl.innerHTML = tableSkeleton(6);
+      runCases();
+    };
+
+    ['f-status', 'f-pri', 'f-lawyer', 'f-type'].forEach((id) => $('#' + id)?.addEventListener('change', onCasesFilterChange));
+    $('#f-q')?.addEventListener('input', () => {
+      clearTimeout(state._casesDebounce);
+      state._casesDebounce = setTimeout(onCasesFilterChange, 300);
+    });
+
+    casesTableEl.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-pagination-target="cases"] [data-page-btn]');
+      if (btn && !btn.disabled) {
+        const targetPage = parseInt(btn.dataset.pageBtn, 10);
+        if (targetPage && targetPage !== state.casesPage) {
+          state.casesPage = targetPage;
+          casesTableEl.innerHTML = tableSkeleton(6);
+          await runCases();
+        }
+      }
+    });
   }
 
-  $('#client-q')?.addEventListener('input', (e) => {
-    clearTimeout(state._clientDebounce);
-    state._clientDebounce = setTimeout(async () => {
-      const list = await api('/api/clients?q=' + encodeURIComponent(e.target.value.trim()));
-      $('#client-grid').innerHTML = clientCards(list);
+  // ─── Phase 3: Clients Pagination & Debounced Search ───
+  const clientSectionEl = $('#client-section');
+  if (clientSectionEl) {
+    const runClients = async () => {
+      const p = new URLSearchParams();
+      p.set('page', state.clientsPage || 1);
+      p.set('limit', state.clientsLimit || 18);
+      if (state.clientsSearch) p.set('q', state.clientsSearch);
+
+      const res = await api('/api/clients?' + p.toString());
+      const norm = normalizePaginated(res, state.clientsLimit || 18);
+      $('#client-grid').innerHTML = clientCards(norm.data);
+      const existingPagination = $('#client-section .pagination-container');
+      if (existingPagination) existingPagination.remove();
+      const newPagHtml = paginationBar(norm.pagination, 'clients');
+      if (newPagHtml) {
+        const temp = document.createElement('div');
+        temp.innerHTML = newPagHtml;
+        clientSectionEl.appendChild(temp.firstElementChild);
+      }
       $$('#client-grid [data-go]').forEach((b) => b.addEventListener('click', () => go(b.dataset.go, { id: b.dataset.id })));
-    }, 200);
+    };
+
+    $('#client-q')?.addEventListener('input', (e) => {
+      clearTimeout(state._clientDebounce);
+      state._clientDebounce = setTimeout(() => {
+        state.clientsPage = 1;
+        state.clientsSearch = e.target.value.trim();
+        $('#client-grid').innerHTML = gridSkeleton(6);
+        runClients();
+      }, 300);
+    });
+
+    clientSectionEl.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-pagination-target="clients"] [data-page-btn]');
+      if (btn && !btn.disabled) {
+        const targetPage = parseInt(btn.dataset.pageBtn, 10);
+        if (targetPage && targetPage !== state.clientsPage) {
+          state.clientsPage = targetPage;
+          $('#client-grid').innerHTML = gridSkeleton(6);
+          await runClients();
+        }
+      }
+    });
+  }
+
+  // ─── Phase 3: Documents Pagination & Debounced Search ───
+  const docsSectionEl = $('#docs-section');
+  if (docsSectionEl) {
+    const runDocs = async () => {
+      const p = new URLSearchParams();
+      p.set('page', state.docsPage || 1);
+      p.set('limit', state.docsLimit || 18);
+      if (state.docsSearch) p.set('search', state.docsSearch);
+      if (state.docsType) p.set('category', state.docsType);
+
+      const res = await api('/api/documents?' + p.toString());
+      const norm = normalizePaginated(res, state.docsLimit || 18);
+      $('#docs-grid').innerHTML = docCards(norm.data);
+      const existingPagination = $('#docs-section .pagination-container');
+      if (existingPagination) existingPagination.remove();
+      const newPagHtml = paginationBar(norm.pagination, 'docs');
+      if (newPagHtml) {
+        const temp = document.createElement('div');
+        temp.innerHTML = newPagHtml;
+        docsSectionEl.appendChild(temp.firstElementChild);
+      }
+      // Re-bind preview modal
+      $$('[data-preview-url]', docsSectionEl).forEach((btn) => {
+        btn.addEventListener('click', () => {
+          previewModal(btn.dataset.previewUrl, btn.dataset.previewTitle, btn.dataset.previewMime);
+        });
+      });
+    };
+
+    $('#doc-q')?.addEventListener('input', (e) => {
+      clearTimeout(state._docDebounce);
+      state._docDebounce = setTimeout(() => {
+        state.docsPage = 1;
+        state.docsSearch = e.target.value.trim();
+        $('#docs-grid').innerHTML = gridSkeleton(6);
+        runDocs();
+      }, 300);
+    });
+
+    $('#doc-type-filter')?.addEventListener('change', (e) => {
+      state.docsPage = 1;
+      state.docsType = e.target.value;
+      $('#docs-grid').innerHTML = gridSkeleton(6);
+      runDocs();
+    });
+
+    docsSectionEl.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-pagination-target="docs"] [data-page-btn]');
+      if (btn && !btn.disabled) {
+        const targetPage = parseInt(btn.dataset.pageBtn, 10);
+        if (targetPage && targetPage !== state.docsPage) {
+          state.docsPage = targetPage;
+          $('#docs-grid').innerHTML = gridSkeleton(6);
+          await runDocs();
+        }
+      }
+    });
+  }
+
+  // ─── Phase 3: Hearings Tabs, Pagination & Debounced Search ───
+  $$('[data-hearings-tab]').forEach((tabBtn) => {
+    tabBtn.addEventListener('click', () => {
+      const tab = tabBtn.dataset.hearingsTab;
+      state.hearingsTab = tab;
+      if (tab === 'calendar') {
+        $('#hearings-calendar-view')?.classList.remove('hidden');
+        $('#hearings-table-view')?.classList.add('hidden');
+      } else {
+        $('#hearings-calendar-view')?.classList.add('hidden');
+        $('#hearings-table-view')?.classList.remove('hidden');
+      }
+      $$('[data-hearings-tab]').forEach((b) => {
+        if (b.dataset.hearingsTab === tab) {
+          b.className = 'px-4 py-2 text-sm font-bold rounded-lg transition bg-navy-900 text-gold-soft';
+        } else {
+          b.className = 'px-4 py-2 text-sm font-bold rounded-lg transition bg-transparent text-navy-800 hover:bg-navy-900/5';
+        }
+      });
+    });
   });
+
+  const hearingsTableContainer = $('#hearings-table-container');
+  if (hearingsTableContainer) {
+    const runHearings = async () => {
+      const p = new URLSearchParams();
+      p.set('page', state.hearingsPage || 1);
+      p.set('limit', state.hearingsLimit || 20);
+      if (state.hearingsSearch) p.set('search', state.hearingsSearch);
+      if (state.hearingsStatus) p.set('status', state.hearingsStatus);
+
+      const res = await api('/api/hearings?' + p.toString());
+      const norm = normalizePaginated(res, state.hearingsLimit || 20);
+      hearingsTableContainer.innerHTML = hearingsTable(norm.data, norm.pagination);
+      $$('#hearings-table-container [data-go]').forEach((b) => b.addEventListener('click', () => go(b.dataset.go, { id: b.dataset.id })));
+    };
+
+    $('#hearing-q')?.addEventListener('input', (e) => {
+      clearTimeout(state._hearingDebounce);
+      state._hearingDebounce = setTimeout(() => {
+        state.hearingsPage = 1;
+        state.hearingsSearch = e.target.value.trim();
+        hearingsTableContainer.innerHTML = tableSkeleton(6);
+        runHearings();
+      }, 300);
+    });
+
+    $('#hearing-status-filter')?.addEventListener('change', (e) => {
+      state.hearingsPage = 1;
+      state.hearingsStatus = e.target.value;
+      hearingsTableContainer.innerHTML = tableSkeleton(6);
+      runHearings();
+    });
+
+    hearingsTableContainer.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-pagination-target="hearings"] [data-page-btn]');
+      if (btn && !btn.disabled) {
+        const targetPage = parseInt(btn.dataset.pageBtn, 10);
+        if (targetPage && targetPage !== state.hearingsPage) {
+          state.hearingsPage = targetPage;
+          hearingsTableContainer.innerHTML = tableSkeleton(6);
+          await runHearings();
+        }
+      }
+    });
+  }
 
   $$('[data-inv-f]').forEach((b) => b.addEventListener('click', async () => {
     const s = b.dataset.invF;
