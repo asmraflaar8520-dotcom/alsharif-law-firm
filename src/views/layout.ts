@@ -2,7 +2,10 @@
  * Application Layout Template
  * Provides the modern RTL HTML5 layout with Tailwind, Cairo & Amiri fonts, and mobile-optimized viewport
  */
-export function renderAppLayout(): string {
+export function renderAppLayout(options?: { isProd?: boolean }): string {
+  const isProd = options?.isProd ?? (process.env.NODE_ENV === 'production' || process.env.VERCEL === '1');
+  const scriptSrc = isProd ? '/static/bundle.min.js' : '/static/js/main.js';
+
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -36,7 +39,7 @@ export function renderAppLayout(): string {
 </head>
 <body class="font-cairo bg-ivory text-ink antialiased selection:bg-gold-500 selection:text-navy-950">
   <div id="app"></div>
-  <script type="module" src="/static/js/main.js"></script>
+  <script type="module" src="${scriptSrc}"></script>
 </body>
 </html>`
 }

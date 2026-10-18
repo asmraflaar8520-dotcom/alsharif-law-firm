@@ -10,6 +10,7 @@ import { caseRoutes } from './routes/cases'
 import { taskRoutes } from './routes/tasks'
 import { documentRoutes } from './routes/documents'
 import { financeRoutes } from './routes/finance'
+import { deadlinesRoutes } from './routes/deadlines'
 import { renderAppLayout } from './views/layout'
 import { getD1Database, ensureDatabaseInitialized } from './db'
 import { AppError } from './utils/errors'
@@ -65,6 +66,7 @@ app.use('/static/*', async (c, next) => {
         '.css': 'text/css; charset=utf-8',
         '.js': 'application/javascript; charset=utf-8',
         '.json': 'application/json; charset=utf-8',
+        '.map': 'application/json; charset=utf-8',
         '.png': 'image/png',
         '.jpg': 'image/jpeg',
         '.jpeg': 'image/jpeg',
@@ -89,6 +91,7 @@ app.route('/api', caseRoutes)
 app.route('/api/tasks', taskRoutes)
 app.route('/api', documentRoutes)
 app.route('/api', financeRoutes)
+app.route('/api', deadlinesRoutes)
 
 // Serve Single Page Application (SPA) HTML Shell
 app.get('/', (c) => c.html(renderAppLayout()))

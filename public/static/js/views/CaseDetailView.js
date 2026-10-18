@@ -3,6 +3,7 @@ import { api } from '../core/api.js'
 import { toast } from '../components/Toast.js'
 import { previewModal } from '../components/Modal.js'
 import { caseForm, hearingForm, docForm, ensureCasesMini } from '../components/Forms.js'
+import { buildWhatsAppLink } from '../core/whatsapp.js'
 
 function formatDocSize(bytes) {
   if (!bytes) return '';
@@ -81,11 +82,25 @@ export const CaseDetailView = {
                   <th class="text-right">النوع</th>
                   <th class="text-right">الغرض</th>
                   <th class="text-right">النتيجة</th>
-                  <th></th>
+                  <th class="text-right">الحالة</th>
+                  <th class="text-center p-3">إخطار الموكل</th>
                 </tr>
               </thead>
               <tbody>
-                ${(c.hearings || []).map((h) => `
+                ${(c.hearings || []).map((h) => {
+                  const waUrl = buildWhatsAppLink({
+                    clientName: c.client_name,
+                    clientPhone: c.client_phone || '',
+                    caseNo: c.case_no,
+                    year: c.year,
+                    courtName: c.court_name,
+                    circuit: c.circuit,
+                    hearingDate: h.hearing_date,
+                    decision: h.result || h.purpose,
+                    nextHearingDate: h.next_hearing,
+                    nextHearingPurpose: h.purpose
+                  });
+                  return `
                   <tr class="border-t gold-hairline ledger-row">
                     <td class="p-3 whitespace-nowrap">
                       ${arDate(h.hearing_date)} <span class="text-navy-700/50">${esc(h.hearing_time || '')}</span>
@@ -95,8 +110,13 @@ export const CaseDetailView = {
                     <td>${esc(h.purpose || '')}</td>
                     <td>${esc(h.result || '—')}</td>
                     <td>${chip(h.status)}</td>
-                  </tr>
-                `).join('') || '<tr><td class="p-6 text-navy-700/50" colspan="5">لا جلسات مسجلة بعد</td></tr>'}
+                    <td class="p-3 text-center whitespace-nowrap">
+                      <a href="${waUrl}" target="_blank" rel="noopener noreferrer" class="whatsapp-btn text-xs" title="إخطار الموكل عبر واتساب">
+                        <i class="fab fa-whatsapp"></i> واتساب
+                      </a>
+                    </td>
+                  </tr>`;
+                }).join('') || '<tr><td class="p-6 text-navy-700/50" colspan="6">لا جلسات مسجلة بعد</td></tr>'}
               </tbody>
             </table>
           </div>

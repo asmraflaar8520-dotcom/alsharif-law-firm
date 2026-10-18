@@ -363,6 +363,18 @@ CREATE TABLE IF NOT EXISTS reminders (
   FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS appeal_deadlines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_id INTEGER NOT NULL,
+  deadline_type TEXT NOT NULL,
+  judgment_date TEXT NOT NULL,
+  due_date TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  notes TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+);
+
 -- ========================================================
 -- Indexes & Performance Accelerators
 -- ========================================================
@@ -372,6 +384,12 @@ CREATE INDEX IF NOT EXISTS idx_cases_case_number_client ON cases(case_number, cl
 CREATE INDEX IF NOT EXISTS idx_cases_case_no_client ON cases(case_no, client_id);
 CREATE INDEX IF NOT EXISTS idx_hearings_hearing_date_case ON hearings(hearing_date, case_id);
 CREATE INDEX IF NOT EXISTS idx_documents_case_id ON documents(case_id);
+
+-- Appeal Deadlines Performance Indexes
+CREATE INDEX IF NOT EXISTS idx_appeal_deadlines_case_id ON appeal_deadlines(case_id);
+CREATE INDEX IF NOT EXISTS idx_appeal_deadlines_due_date ON appeal_deadlines(due_date);
+CREATE INDEX IF NOT EXISTS idx_appeal_deadlines_status ON appeal_deadlines(status);
+CREATE INDEX IF NOT EXISTS idx_appeal_deadlines_radar ON appeal_deadlines(status, due_date);
 
 -- Query Acceleration & Relational Indexes
 CREATE INDEX IF NOT EXISTS idx_cases_client ON cases(client_id);

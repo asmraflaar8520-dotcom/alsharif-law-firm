@@ -620,6 +620,41 @@ test('Law Office Web Application Integration & Security Test Suite', async (t) =
     assert.ok(hearingsBody.pagination, 'Hearings response has pagination envelope')
   })
 
+  // 8.5. Appeal Deadlines API
+  await t.test('Deadlines: Calculate statutory deadline and fetch radar', async () => {
+    // 1. Create a deadline via POST /api/deadlines
+    const postRes = await fetch(`${BASE_URL}/api/deadlines`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: authCookie },
+      body: JSON.stringify({
+        case_id: 1,
+        deadline_type: 'civil_appeal',
+        judgment_date: '2026-09-01',
+        notes: 'طعن بالاستئناف على حكم أول درجة'
+      }),
+    })
+    assert.equal(postRes.status, 201)
+    const deadline = await postRes.json()
+    assert.ok(deadline.id)
+    assert.equal(deadline.due_date, '2026-10-11')
+
+    // 2. Fetch radar via GET /api/deadlines/radar
+    const radarRes = await fetch(`${BASE_URL}/api/deadlines/radar`, {
+      headers: { Cookie: authCookie },
+    })
+    assert.equal(radarRes.status, 200)
+    const radar = await radarRes.json()
+    assert.ok(radar.total_pending >= 1)
+
+    // 3. Mark filed via PUT /api/deadlines/:id
+    const putRes = await fetch(`${BASE_URL}/api/deadlines/${deadline.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Cookie: authCookie },
+      body: JSON.stringify({ status: 'filed' }),
+    })
+    assert.equal(putRes.status, 200)
+  })
+
   // 9. Session Termination
   await t.test('Auth: Logout cleanly terminates session', async () => {
     const res = await fetch(`${BASE_URL}/api/logout`, {

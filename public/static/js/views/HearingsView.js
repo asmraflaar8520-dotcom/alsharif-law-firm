@@ -3,6 +3,7 @@ import { api } from '../core/api.js'
 import { normalizePaginated, paginationBar, bindPaginationEvents } from '../components/PaginationBar.js'
 import { tableSkeleton } from '../components/Skeletons.js'
 import { hearingForm, ensureCasesMini } from '../components/Forms.js'
+import { buildWhatsAppLink } from '../core/whatsapp.js'
 
 let _hearingsDebounceTimer = null;
 
@@ -63,17 +64,34 @@ export const HearingsView = {
                   <h3 class="font-amiri text-lg md:text-xl">${arDate(d)}${isT ? ' · اليوم' : ''}</h3>
                   <span class="text-xs text-navy-700/50">${items.length} جلسة</span>
                 </div>
-                ${items.length ? items.map((h) => `
-                  <button data-go="case" data-id="${h.case_id}" class="w-full text-right border-t gold-hairline py-3 hover:bg-navy-900/[.03] transition">
-                    <div class="flex justify-between gap-2">
-                      <div>
-                        <div class="font-semibold text-xs md:text-sm">${esc(h.hearing_time || '—')} · ${esc(h.type)} — ${caseRef(h)}</div>
-                        <div class="text-xs md:text-sm text-navy-800">${esc(h.case_title)}</div>
-                        <div class="text-[11px] text-navy-700/50">${esc(h.court_name || h.circuit || '')} · ${esc(h.lawyer_name || '')}</div>
-                      </div>
+                ${items.length ? items.map((h) => {
+                  const waUrl = buildWhatsAppLink({
+                    clientName: h.client_name,
+                    clientPhone: h.client_phone,
+                    caseNo: h.case_no,
+                    year: h.year,
+                    courtName: h.court_name,
+                    circuit: h.circuit,
+                    hearingDate: h.hearing_date,
+                    decision: h.result || h.purpose,
+                    nextHearingDate: h.next_hearing,
+                    nextHearingPurpose: h.purpose
+                  });
+                  return `
+                  <div class="border-t gold-hairline py-3 hover:bg-navy-900/[.03] transition flex items-center justify-between gap-2">
+                    <button data-go="case" data-id="${h.case_id}" class="text-right flex-1">
+                      <div class="font-semibold text-xs md:text-sm">${esc(h.hearing_time || '—')} · ${esc(h.type)} — ${caseRef(h)}</div>
+                      <div class="text-xs md:text-sm text-navy-800 font-bold">${esc(h.case_title)}</div>
+                      <div class="text-[11px] text-navy-700/50">${esc(h.court_name || h.circuit || '')} · ${esc(h.lawyer_name || '')} · ${esc(h.client_name || '')}</div>
+                    </button>
+                    <div class="flex items-center gap-2 shrink-0">
                       ${chip(h.status)}
+                      <a href="${waUrl}" target="_blank" rel="noopener noreferrer" class="whatsapp-btn text-xs" title="إخطار الموكل عبر واتساب">
+                        <i class="fab fa-whatsapp"></i> واتساب
+                      </a>
                     </div>
-                  </button>`).join('') : `<p class="text-xs md:text-sm text-navy-700/40">لا جلسات</p>`}
+                  </div>`;
+                }).join('') : `<p class="text-xs md:text-sm text-navy-700/40">لا جلسات</p>`}
               </section>`;
             }).join('')}
           </div>
@@ -117,10 +135,24 @@ export const HearingsView = {
                 <th class="text-right">المحامي الحاضر</th>
                 <th class="text-right">الغرض / القرار</th>
                 <th class="text-right">الحالة</th>
+                <th class="text-center p-3">إخطار الموكل</th>
               </tr>
             </thead>
             <tbody>
-              ${list.map((h) => `
+              ${list.map((h) => {
+                const waUrl = buildWhatsAppLink({
+                  clientName: h.client_name,
+                  clientPhone: h.client_phone,
+                  caseNo: h.case_no,
+                  year: h.year,
+                  courtName: h.court_name,
+                  circuit: h.circuit,
+                  hearingDate: h.hearing_date,
+                  decision: h.result || h.purpose,
+                  nextHearingDate: h.next_hearing,
+                  nextHearingPurpose: h.purpose
+                });
+                return `
                 <tr class="ledger-row border-t gold-hairline cursor-pointer" data-go="case" data-id="${h.case_id}">
                   <td class="p-3 whitespace-nowrap">
                     <div class="font-bold text-navy-900">${arDate(h.hearing_date)}</div>
@@ -129,6 +161,7 @@ export const HearingsView = {
                   <td>
                     <div class="font-semibold">${caseRef(h)}</div>
                     <div class="text-xs text-navy-700/60 truncate">${esc(h.case_title)}</div>
+                    <div class="text-[11px] text-navy-700/50">${esc(h.client_name || '')}</div>
                   </td>
                   <td>
                     <div>${esc(h.court_name || '—')}</div>
@@ -144,8 +177,13 @@ export const HearingsView = {
                     <div class="text-xs">${esc(h.purpose || h.result || '—')}</div>
                   </td>
                   <td class="p-3 whitespace-nowrap">${chip(h.status)}</td>
-                </tr>
-              `).join('')}
+                  <td class="p-3 text-center whitespace-nowrap" onclick="event.stopPropagation()">
+                    <a href="${waUrl}" target="_blank" rel="noopener noreferrer" class="whatsapp-btn" title="إخطار الموكل بقرار الجلسة عبر واتساب">
+                      <i class="fab fa-whatsapp"></i> واتساب
+                    </a>
+                  </td>
+                </tr>`;
+              }).join('')}
             </tbody>
           </table>
         </div>

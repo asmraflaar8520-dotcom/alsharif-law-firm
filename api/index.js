@@ -5852,8 +5852,284 @@ financeRoutes.get("/reports/finance", async (c) => {
   return c.json(report);
 });
 
+// src/services/deadlines.service.ts
+var APPEAL_RULES = {
+  civil_appeal: {
+    key: "civil_appeal",
+    days: 40,
+    label: "\u0627\u0633\u062A\u0626\u0646\u0627\u0641 \u0645\u062F\u0646\u064A",
+    lawReference: "\u0627\u0644\u0645\u0627\u062F\u0629 227 \u0645\u0646 \u0642\u0627\u0646\u0648\u0646 \u0627\u0644\u0645\u0631\u0627\u0641\u0639\u0627\u062A \u0627\u0644\u0645\u062F\u0646\u064A\u0629 \u0648\u0627\u0644\u062A\u062C\u0627\u0631\u064A\u0629 \u0631\u0642\u0645 13 \u0644\u0633\u0646\u0629 1968 (40 \u064A\u0648\u0645\u0627\u064B)",
+    courtDegree: "\u0627\u0633\u062A\u0626\u0646\u0627\u0641 \u0639\u0627\u0644\u064A"
+  },
+  urgent_appeal: {
+    key: "urgent_appeal",
+    days: 15,
+    label: "\u0627\u0633\u062A\u0626\u0646\u0627\u0641 \u0645\u0633\u062A\u0639\u062C\u0644",
+    lawReference: "\u0627\u0644\u0645\u0627\u062F\u0629 227 \u0645\u0646 \u0642\u0627\u0646\u0648\u0646 \u0627\u0644\u0645\u0631\u0627\u0641\u0639\u0627\u062A \u0627\u0644\u0645\u062F\u0646\u064A\u0629 \u0648\u0627\u0644\u062A\u062C\u0627\u0631\u064A\u0629 (15 \u064A\u0648\u0645\u0627\u064B \u0644\u0644\u0623\u062D\u0643\u0627\u0645 \u0627\u0644\u0645\u0633\u062A\u0639\u062C\u0644\u0629)",
+    courtDegree: "\u0627\u0633\u062A\u0626\u0646\u0627\u0641 \u0645\u0633\u062A\u0639\u062C\u0644"
+  },
+  misdemeanor_appeal: {
+    key: "misdemeanor_appeal",
+    days: 10,
+    label: "\u0627\u0633\u062A\u0626\u0646\u0627\u0641 \u062C\u0646\u062D",
+    lawReference: "\u0627\u0644\u0645\u0627\u062F\u0629 406 \u0645\u0646 \u0642\u0627\u0646\u0648\u0646 \u0627\u0644\u0625\u062C\u0631\u0627\u0621\u0627\u062A \u0627\u0644\u062C\u0646\u0627\u0626\u064A\u0629 \u0631\u0642\u0645 150 \u0644\u0633\u0646\u0629 1950 (10 \u0623\u064A\u0627\u0645 \u0645\u0646 \u062A\u0627\u0631\u064A\u062E \u0635\u062F\u0648\u0631 \u0627\u0644\u062D\u0643\u0645)",
+    courtDegree: "\u062C\u0646\u062D \u0645\u0633\u062A\u0623\u0646\u0641\u0629"
+  },
+  cassation: {
+    key: "cassation",
+    days: 60,
+    label: "\u0637\u0639\u0646 \u0628\u0627\u0644\u0646\u0642\u0636",
+    lawReference: "\u0627\u0644\u0645\u0627\u062F\u0629 34 \u0645\u0646 \u0642\u0627\u0646\u0648\u0646 \u062D\u0627\u0644\u0627\u062A \u0648\u0625\u062C\u0631\u0627\u0621\u0627\u062A \u0627\u0644\u0637\u0639\u0646 \u0623\u0645\u0627\u0645 \u0645\u062D\u0643\u0645\u0629 \u0627\u0644\u0646\u0642\u0636 \u0631\u0642\u0645 57 \u0644\u0633\u0646\u0629 1959 (60 \u064A\u0648\u0645\u0627\u064B)",
+    courtDegree: "\u0645\u062D\u0643\u0645\u0629 \u0627\u0644\u0646\u0642\u0636"
+  },
+  administrative_supreme: {
+    key: "administrative_supreme",
+    days: 60,
+    label: "\u0637\u0639\u0646 \u0623\u0645\u0627\u0645 \u0627\u0644\u0625\u062F\u0627\u0631\u064A\u0629 \u0627\u0644\u0639\u0644\u064A\u0627",
+    lawReference: "\u0627\u0644\u0645\u0627\u062F\u0629 44 \u0645\u0646 \u0642\u0627\u0646\u0648\u0646 \u0645\u062C\u0644\u0633 \u0627\u0644\u062F\u0648\u0644\u0629 \u0631\u0642\u0645 47 \u0644\u0633\u0646\u0629 1972 (60 \u064A\u0648\u0645\u0627\u064B)",
+    courtDegree: "\u0627\u0644\u0645\u062D\u0643\u0645\u0629 \u0627\u0644\u0625\u062F\u0627\u0631\u064A\u0629 \u0627\u0644\u0639\u0644\u064A\u0627"
+  }
+};
+function calculateAppealDueDate(judgmentDateStr, deadlineType) {
+  const rule = APPEAL_RULES[deadlineType];
+  if (!rule) {
+    throw new Error(`\u0646\u0648\u0639 \u0645\u064A\u0639\u0627\u062F \u0627\u0644\u0637\u0639\u0646 \u063A\u064A\u0631 \u0645\u0639\u062A\u0645\u062F: ${deadlineType}`);
+  }
+  const parts = judgmentDateStr.trim().split("-").map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) {
+    throw new Error(`\u0635\u064A\u063A\u0629 \u062A\u0627\u0631\u064A\u062E \u0627\u0644\u062D\u0643\u0645 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629\u060C \u064A\u062C\u0628 \u0623\u0646 \u062A\u0643\u0648\u0646 YYYY-MM-DD: ${judgmentDateStr}`);
+  }
+  const [year, month, day] = parts;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + rule.days);
+  const resYear = date.getUTCFullYear();
+  const resMonth = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const resDay = String(date.getUTCDate()).padStart(2, "0");
+  return `${resYear}-${resMonth}-${resDay}`;
+}
+function calculateRemainingDays(dueDateStr, fromDateStr) {
+  const today = fromDateStr ? fromDateStr.trim().slice(0, 10) : (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const [ty, tm, td] = today.split("-").map(Number);
+  const [dy, dm, dd] = dueDateStr.trim().split("-").map(Number);
+  const tMs = Date.UTC(ty, tm - 1, td);
+  const dMs = Date.UTC(dy, dm - 1, dd);
+  return Math.round((dMs - tMs) / (1e3 * 60 * 60 * 24));
+}
+function getDeadlineAlertLevel(dueDateStr, status, fromDateStr) {
+  if (status === "filed") return "safe";
+  const remaining = calculateRemainingDays(dueDateStr, fromDateStr);
+  if (remaining < 0) return "expired";
+  if (remaining <= 3) return "urgent";
+  if (remaining <= 7) return "warning";
+  return "safe";
+}
+var DeadlinesService = class {
+  /**
+   * Retrieves appeal deadlines with client and case metadata
+   */
+  static async getDeadlines(db, filters = {}) {
+    let sql = `
+      SELECT 
+        ad.*,
+        c.case_no,
+        c.year,
+        c.title AS case_title,
+        c.client_id,
+        cl.name AS client_name,
+        cl.phone AS client_phone,
+        co.name AS court_name,
+        c.circuit
+      FROM appeal_deadlines ad
+      JOIN cases c ON c.id = ad.case_id
+      JOIN clients cl ON cl.id = c.client_id
+      LEFT JOIN courts co ON co.id = c.court_id
+      WHERE 1=1
+    `;
+    const binds = [];
+    if (filters.status) {
+      sql += ` AND ad.status = ?`;
+      binds.push(filters.status);
+    }
+    if (filters.case_id) {
+      sql += ` AND ad.case_id = ?`;
+      binds.push(Number(filters.case_id));
+    }
+    if (filters.search) {
+      const like = `%${filters.search.trim()}%`;
+      sql += ` AND (c.case_no LIKE ? OR c.title LIKE ? OR cl.name LIKE ? OR ad.notes LIKE ?)`;
+      binds.push(like, like, like, like);
+    }
+    sql += ` ORDER BY ad.due_date ASC, ad.id DESC`;
+    const res = await db.prepare(sql).bind(...binds).all();
+    const rows = res.results || [];
+    return rows.map((r) => {
+      const rule = APPEAL_RULES[r.deadline_type];
+      const remaining = calculateRemainingDays(r.due_date);
+      const alert = getDeadlineAlertLevel(r.due_date, r.status);
+      return {
+        ...r,
+        deadline_label: rule?.label || r.deadline_type,
+        law_reference: rule?.lawReference || "",
+        remaining_days: remaining,
+        alert_level: alert
+      };
+    });
+  }
+  /**
+   * Retrieves high-priority deadlines for the Dashboard Radar Widget
+   * (Deadlines pending and due within 7 days, or expired pending)
+   */
+  static async getRadarDeadlines(db) {
+    const all = await this.getDeadlines(db, { status: "pending" });
+    const urgent = [];
+    const warning = [];
+    let expiredCount = 0;
+    for (const d of all) {
+      if (d.alert_level === "expired") {
+        expiredCount++;
+        urgent.push(d);
+      } else if (d.alert_level === "urgent") {
+        urgent.push(d);
+      } else if (d.alert_level === "warning") {
+        warning.push(d);
+      }
+    }
+    return {
+      urgent,
+      warning,
+      total_pending: all.length,
+      expired_count: expiredCount
+    };
+  }
+  /**
+   * Registers a new appeal deadline with auto-calculated due date
+   */
+  static async createDeadline(db, payload, userId) {
+    if (!payload.case_id) {
+      throw new Error("\u0631\u0642\u0645 \u0645\u0644\u0641 \u0627\u0644\u0642\u0636\u064A\u0629 \u0645\u0637\u0644\u0648\u0628 \u0644\u0625\u0646\u0634\u0627\u0621 \u0645\u064A\u0639\u0627\u062F \u0627\u0644\u0637\u0639\u0646");
+    }
+    if (!payload.deadline_type) {
+      throw new Error("\u0646\u0648\u0639 \u0645\u064A\u0639\u0627\u062F \u0627\u0644\u0637\u0639\u0646 \u0645\u0637\u0644\u0648\u0628");
+    }
+    if (!payload.judgment_date) {
+      throw new Error("\u062A\u0627\u0631\u064A\u062E \u0635\u062F\u0648\u0631 \u0627\u0644\u062D\u0643\u0645 \u0623\u0648 \u0627\u0644\u0625\u0639\u0644\u0627\u0646 \u0645\u0637\u0644\u0648\u0628");
+    }
+    const dueDate = calculateAppealDueDate(payload.judgment_date, payload.deadline_type);
+    const insertRes = await db.prepare(
+      `INSERT INTO appeal_deadlines (case_id, deadline_type, judgment_date, due_date, status, notes)
+         VALUES (?, ?, ?, ?, 'pending', ?)`
+    ).bind(
+      Number(payload.case_id),
+      payload.deadline_type,
+      payload.judgment_date.trim().slice(0, 10),
+      dueDate,
+      payload.notes?.trim() || null
+    ).run();
+    const newId = insertRes.meta.last_row_id;
+    if (userId) {
+      const rule = APPEAL_RULES[payload.deadline_type];
+      await db.prepare(
+        `INSERT INTO activities (user_id, entity_type, entity_id, action, detail)
+           VALUES (?, 'appeal_deadline', ?, '\u0642\u064A\u062F \u0645\u064A\u0639\u0627\u062F \u0637\u0639\u0646', ?)`
+      ).bind(userId, newId, `\u0642\u064A\u062F ${rule?.label || payload.deadline_type} \u064A\u0633\u062A\u062D\u0642 \u0641\u064A ${dueDate}`).run().catch(() => {
+      });
+    }
+    const created = await this.getDeadlines(db, { case_id: payload.case_id });
+    const found = created.find((c) => c.id === newId);
+    if (!found) {
+      throw new Error("\u062A\u0639\u0630\u0631 \u0627\u0644\u0639\u062B\u0648\u0631 \u0639\u0644\u0649 \u0645\u064A\u0639\u0627\u062F \u0627\u0644\u0637\u0639\u0646 \u0628\u0639\u062F \u0625\u0646\u0634\u0627\u0626\u0647");
+    }
+    return found;
+  }
+  /**
+   * Updates deadline status (e.g. marked as filed 'تم قيد الطعن')
+   */
+  static async updateDeadlineStatus(db, id, status, notes) {
+    const valid = ["pending", "filed", "expired"];
+    if (!valid.includes(status)) {
+      throw new Error(`\u062D\u0627\u0644\u0629 \u0645\u064A\u0639\u0627\u062F \u0627\u0644\u0637\u0639\u0646 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629: ${status}`);
+    }
+    let sql = `UPDATE appeal_deadlines SET status = ?`;
+    const binds = [status];
+    if (notes !== void 0) {
+      sql += `, notes = ?`;
+      binds.push(notes.trim());
+    }
+    sql += ` WHERE id = ?`;
+    binds.push(Number(id));
+    const res = await db.prepare(sql).bind(...binds).run();
+    return res.meta.changes > 0;
+  }
+  /**
+   * Deletes an appeal deadline
+   */
+  static async deleteDeadline(db, id) {
+    const res = await db.prepare(`DELETE FROM appeal_deadlines WHERE id = ?`).bind(Number(id)).run();
+    return res.meta.changes > 0;
+  }
+};
+
+// src/routes/deadlines.ts
+var deadlinesRoutes = new Hono2();
+deadlinesRoutes.get("/deadlines", async (c) => {
+  const user = await requireUser(c);
+  if (user instanceof Response) return user;
+  const query = c.req.query();
+  const data = await DeadlinesService.getDeadlines(c.env.DB, {
+    status: query.status,
+    case_id: query.case_id,
+    search: query.q || query.search
+  });
+  return c.json(data);
+});
+deadlinesRoutes.get("/deadlines/radar", async (c) => {
+  const user = await requireUser(c);
+  if (user instanceof Response) return user;
+  const radar = await DeadlinesService.getRadarDeadlines(c.env.DB);
+  return c.json(radar);
+});
+deadlinesRoutes.post("/deadlines", async (c) => {
+  const user = await requireUser(c);
+  if (user instanceof Response) return user;
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const record = await DeadlinesService.createDeadline(c.env.DB, body, user.id);
+    return c.json(record, 201);
+  } catch (err) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+deadlinesRoutes.put("/deadlines/:id", async (c) => {
+  const user = await requireUser(c);
+  if (user instanceof Response) return user;
+  const id = c.req.param("id");
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const ok = await DeadlinesService.updateDeadlineStatus(
+      c.env.DB,
+      id,
+      body.status || "filed",
+      body.notes
+    );
+    if (!ok) return c.json({ error: "\u0645\u064A\u0639\u0627\u062F \u0627\u0644\u0637\u0639\u0646 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" }, 404);
+    return c.json({ success: true, message: "\u062A\u0645 \u062A\u062D\u062F\u064A\u062B \u0645\u064A\u0639\u0627\u062F \u0627\u0644\u0637\u0639\u0646 \u0628\u0646\u062C\u0627\u062D" });
+  } catch (err) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+deadlinesRoutes.delete("/deadlines/:id", async (c) => {
+  const user = await requireUser(c);
+  if (user instanceof Response) return user;
+  const id = c.req.param("id");
+  const ok = await DeadlinesService.deleteDeadline(c.env.DB, id);
+  if (!ok) return c.json({ error: "\u0645\u064A\u0639\u0627\u062F \u0627\u0644\u0637\u0639\u0646 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" }, 404);
+  return c.json({ success: true, message: "\u062A\u0645 \u062D\u0630\u0641 \u0645\u064A\u0639\u0627\u062F \u0627\u0644\u0637\u0639\u0646 \u0628\u0646\u062C\u0627\u062D" });
+});
+
 // src/views/layout.ts
-function renderAppLayout() {
+function renderAppLayout(options) {
+  const isProd = options?.isProd ?? (process.env.NODE_ENV === "production" || process.env.VERCEL === "1");
+  const scriptSrc = isProd ? "/static/bundle.min.js" : "/static/js/main.js";
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -5887,7 +6163,7 @@ function renderAppLayout() {
 </head>
 <body class="font-cairo bg-ivory text-ink antialiased selection:bg-gold-500 selection:text-navy-950">
   <div id="app"></div>
-  <script type="module" src="/static/js/main.js"></script>
+  <script type="module" src="${scriptSrc}"></script>
 </body>
 </html>`;
 }
@@ -6288,6 +6564,18 @@ CREATE TABLE IF NOT EXISTS reminders (
   FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS appeal_deadlines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_id INTEGER NOT NULL,
+  deadline_type TEXT NOT NULL,
+  judgment_date TEXT NOT NULL,
+  due_date TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  notes TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+);
+
 -- ========================================================
 -- Indexes & Performance Accelerators
 -- ========================================================
@@ -6297,6 +6585,12 @@ CREATE INDEX IF NOT EXISTS idx_cases_case_number_client ON cases(case_number, cl
 CREATE INDEX IF NOT EXISTS idx_cases_case_no_client ON cases(case_no, client_id);
 CREATE INDEX IF NOT EXISTS idx_hearings_hearing_date_case ON hearings(hearing_date, case_id);
 CREATE INDEX IF NOT EXISTS idx_documents_case_id ON documents(case_id);
+
+-- Appeal Deadlines Performance Indexes
+CREATE INDEX IF NOT EXISTS idx_appeal_deadlines_case_id ON appeal_deadlines(case_id);
+CREATE INDEX IF NOT EXISTS idx_appeal_deadlines_due_date ON appeal_deadlines(due_date);
+CREATE INDEX IF NOT EXISTS idx_appeal_deadlines_status ON appeal_deadlines(status);
+CREATE INDEX IF NOT EXISTS idx_appeal_deadlines_radar ON appeal_deadlines(status, due_date);
 
 -- Query Acceleration & Relational Indexes
 CREATE INDEX IF NOT EXISTS idx_cases_client ON cases(client_id);
@@ -6429,6 +6723,23 @@ async function runMigrations(client) {
         END;
       `);
     }
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS appeal_deadlines (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        deadline_type TEXT NOT NULL,
+        judgment_date TEXT NOT NULL,
+        due_date TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+      );
+    `);
+    await client.execute(`CREATE INDEX IF NOT EXISTS idx_appeal_deadlines_case_id ON appeal_deadlines(case_id);`);
+    await client.execute(`CREATE INDEX IF NOT EXISTS idx_appeal_deadlines_due_date ON appeal_deadlines(due_date);`);
+    await client.execute(`CREATE INDEX IF NOT EXISTS idx_appeal_deadlines_status ON appeal_deadlines(status);`);
+    await client.execute(`CREATE INDEX IF NOT EXISTS idx_appeal_deadlines_radar ON appeal_deadlines(status, due_date);`);
     const tableResult = await client.execute(
       `SELECT name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY name;`
     );
@@ -6556,12 +6867,12 @@ async function ensureDatabaseInitialized(client) {
   if (!initPromise) {
     initPromise = (async () => {
       try {
-        const check = await targetClient.execute(
-          `SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name='clients';`
-        );
-        const exists = Number(check.rows[0]?.count || 0) > 0;
-        if (!exists) {
-          await runMigrations(targetClient);
+        await runMigrations(targetClient);
+        const countCheck = await targetClient.execute(
+          `SELECT COUNT(*) as count FROM clients;`
+        ).catch(() => ({ rows: [{ count: 0 }] }));
+        const hasData = Number(countCheck.rows[0]?.count || 0) > 0;
+        if (!hasData) {
           await seedDatabase(targetClient);
         }
       } catch (err) {
@@ -6623,6 +6934,7 @@ app.use("/static/*", async (c, next) => {
         ".css": "text/css; charset=utf-8",
         ".js": "application/javascript; charset=utf-8",
         ".json": "application/json; charset=utf-8",
+        ".map": "application/json; charset=utf-8",
         ".png": "image/png",
         ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
@@ -6646,6 +6958,7 @@ app.route("/api", caseRoutes);
 app.route("/api/tasks", taskRoutes);
 app.route("/api", documentRoutes);
 app.route("/api", financeRoutes);
+app.route("/api", deadlinesRoutes);
 app.get("/", (c) => c.html(renderAppLayout()));
 app.get("/login", (c) => c.html(renderAppLayout()));
 app.get("/app", (c) => c.html(renderAppLayout()));

@@ -42,15 +42,16 @@ export async function ensureDatabaseInitialized(client?: Client): Promise<void> 
   if (!initPromise) {
     initPromise = (async () => {
       try {
-        // Check if essential tables exist
-        const check = await targetClient.execute(
-          `SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name='clients';`
-        )
-        const exists = Number(check.rows[0]?.count || 0) > 0
+        // Always run idempotent migrations so new tables and columns are applied safely
+        await runMigrations(targetClient)
 
-        if (!exists) {
-          // Fresh database: apply schema migrations and seeds
-          await runMigrations(targetClient)
+        // Seed initial reference data if clients table is empty
+        const countCheck = await targetClient.execute(
+          `SELECT COUNT(*) as count FROM clients;`
+        ).catch(() => ({ rows: [{ count: 0 }] }))
+        const hasData = Number(countCheck.rows[0]?.count || 0) > 0
+
+        if (!hasData) {
           await seedDatabase(targetClient)
         }
       } catch (err) {

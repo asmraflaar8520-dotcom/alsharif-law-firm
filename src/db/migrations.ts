@@ -106,6 +106,25 @@ export async function runMigrations(client: Client): Promise<MigrationResult> {
       `)
     }
 
+    // 4. Ensure appeal_deadlines table and performance indexes exist
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS appeal_deadlines (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        deadline_type TEXT NOT NULL,
+        judgment_date TEXT NOT NULL,
+        due_date TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+      );
+    `)
+    await client.execute(`CREATE INDEX IF NOT EXISTS idx_appeal_deadlines_case_id ON appeal_deadlines(case_id);`)
+    await client.execute(`CREATE INDEX IF NOT EXISTS idx_appeal_deadlines_due_date ON appeal_deadlines(due_date);`)
+    await client.execute(`CREATE INDEX IF NOT EXISTS idx_appeal_deadlines_status ON appeal_deadlines(status);`)
+    await client.execute(`CREATE INDEX IF NOT EXISTS idx_appeal_deadlines_radar ON appeal_deadlines(status, due_date);`)
+
     // Inspect created tables to verify completion
     const tableResult = await client.execute(
       `SELECT name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY name;`
