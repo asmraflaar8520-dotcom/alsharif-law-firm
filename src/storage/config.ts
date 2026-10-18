@@ -32,14 +32,31 @@ export function getStorageConfig(): StorageConfig {
   const publicUrl = config.storage.publicUrl
   const isCloudConfigured = config.storage.isCloudConfigured
 
-  const localUploadDir = path.resolve(process.cwd(), 'data', 'uploads')
+  const isServerless = Boolean(
+    process.env.VERCEL ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.LAMBDA_TASK_ROOT
+  )
+
+  let localUploadDir = isServerless
+    ? path.resolve('/tmp', 'uploads')
+    : path.resolve(process.cwd(), 'data', 'uploads')
+
   if (!isCloudConfigured) {
     try {
       if (!fs.existsSync(localUploadDir)) {
         fs.mkdirSync(localUploadDir, { recursive: true })
       }
     } catch {
-      // Best-effort directory creation
+      // In serverless / read-only filesystem, fallback to /tmp/uploads
+      try {
+        localUploadDir = path.resolve('/tmp', 'uploads')
+        if (!fs.existsSync(localUploadDir)) {
+          fs.mkdirSync(localUploadDir, { recursive: true })
+        }
+      } catch {
+        // Best-effort directory creation
+      }
     }
   }
 

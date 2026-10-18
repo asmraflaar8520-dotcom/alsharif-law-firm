@@ -27,7 +27,18 @@ export function getDatabaseConfig(): DatabaseConfig {
 
   // 2. Local persistent database file fallback
   // Can be customized via SQLITE_PATH or DATABASE_PATH
-  const localPath = config.database.localPath
+  const isServerless = Boolean(
+    process.env.VERCEL ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.LAMBDA_TASK_ROOT
+  )
+
+  let localPath = config.database.localPath
+  // If running in serverless and pointing to read-only ./data, redirect to /tmp
+  if (isServerless && (localPath.startsWith('./data') || localPath.startsWith('data/'))) {
+    localPath = '/tmp/law_firm.db'
+  }
+
   const isMemory = localPath === ':memory:' || localPath === 'file::memory:'
 
   let url = localPath
@@ -45,7 +56,16 @@ export function getDatabaseConfig(): DatabaseConfig {
         fs.mkdirSync(dir, { recursive: true })
       }
     } catch {
-      // Best-effort directory creation
+      // In serverless / read-only filesystem, fallback to /tmp
+      try {
+        const tmpDir = path.resolve('/tmp')
+        if (!fs.existsSync(tmpDir)) {
+          fs.mkdirSync(tmpDir, { recursive: true })
+        }
+        url = 'file:/tmp/law_firm.db'
+      } catch {
+        url = 'file::memory:'
+      }
     }
   }
 

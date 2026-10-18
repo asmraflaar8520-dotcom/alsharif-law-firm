@@ -50,7 +50,14 @@ export function loadAppConfig(): AppConfig {
   // Database credentials & fallbacks
   const remoteUrl = getRawEnv('TURSO_DATABASE_URL') || getRawEnv('DATABASE_URL') || getRawEnv('LIBSQL_URL')
   const authToken = getRawEnv('TURSO_AUTH_TOKEN') || getRawEnv('DATABASE_AUTH_TOKEN')
-  const localPath = getRawEnv('SQLITE_PATH') || getRawEnv('DATABASE_PATH') || './data/law_firm.db'
+  // Detect serverless environment (Vercel / AWS Lambda) where the filesystem is read-only except /tmp
+  const isServerless = Boolean(
+    getRawEnv('VERCEL') ||
+    getRawEnv('AWS_LAMBDA_FUNCTION_NAME') ||
+    getRawEnv('LAMBDA_TASK_ROOT')
+  )
+  const defaultLocalPath = isServerless ? '/tmp/law_firm.db' : './data/law_firm.db'
+  const localPath = getRawEnv('SQLITE_PATH') || getRawEnv('DATABASE_PATH') || defaultLocalPath
   const isRemote = Boolean(remoteUrl && !remoteUrl.startsWith('file:'))
 
   // Object Storage credentials & fallbacks

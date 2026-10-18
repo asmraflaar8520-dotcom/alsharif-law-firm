@@ -4904,7 +4904,11 @@ function loadAppConfig() {
   const port = rawPort ? parseInt(rawPort, 10) : 3e3;
   const remoteUrl = getRawEnv("TURSO_DATABASE_URL") || getRawEnv("DATABASE_URL") || getRawEnv("LIBSQL_URL");
   const authToken = getRawEnv("TURSO_AUTH_TOKEN") || getRawEnv("DATABASE_AUTH_TOKEN");
-  const localPath = getRawEnv("SQLITE_PATH") || getRawEnv("DATABASE_PATH") || "./data/law_firm.db";
+  const isServerless = Boolean(
+    getRawEnv("VERCEL") || getRawEnv("AWS_LAMBDA_FUNCTION_NAME") || getRawEnv("LAMBDA_TASK_ROOT")
+  );
+  const defaultLocalPath = isServerless ? "/tmp/law_firm.db" : "./data/law_firm.db";
+  const localPath = getRawEnv("SQLITE_PATH") || getRawEnv("DATABASE_PATH") || defaultLocalPath;
   const isRemote = Boolean(remoteUrl && !remoteUrl.startsWith("file:"));
   const bucketName = getRawEnv("R2_BUCKET_NAME") || getRawEnv("S3_BUCKET_NAME") || getRawEnv("AWS_S3_BUCKET");
   const accessKeyId = getRawEnv("R2_ACCESS_KEY_ID") || getRawEnv("AWS_ACCESS_KEY_ID");
@@ -4953,13 +4957,23 @@ function getStorageConfig() {
   const region = config.storage.region;
   const publicUrl = config.storage.publicUrl;
   const isCloudConfigured = config.storage.isCloudConfigured;
-  const localUploadDir = path.resolve(process.cwd(), "data", "uploads");
+  const isServerless = Boolean(
+    process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT
+  );
+  let localUploadDir = isServerless ? path.resolve("/tmp", "uploads") : path.resolve(process.cwd(), "data", "uploads");
   if (!isCloudConfigured) {
     try {
       if (!fs.existsSync(localUploadDir)) {
         fs.mkdirSync(localUploadDir, { recursive: true });
       }
     } catch {
+      try {
+        localUploadDir = path.resolve("/tmp", "uploads");
+        if (!fs.existsSync(localUploadDir)) {
+          fs.mkdirSync(localUploadDir, { recursive: true });
+        }
+      } catch {
+      }
     }
   }
   return {
@@ -6180,7 +6194,13 @@ function getDatabaseConfig() {
       isRemote: true
     };
   }
-  const localPath = config.database.localPath;
+  const isServerless = Boolean(
+    process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT
+  );
+  let localPath = config.database.localPath;
+  if (isServerless && (localPath.startsWith("./data") || localPath.startsWith("data/"))) {
+    localPath = "/tmp/law_firm.db";
+  }
   const isMemory = localPath === ":memory:" || localPath === "file::memory:";
   let url = localPath;
   if (!url.startsWith("file:") && !isMemory) {
@@ -6195,6 +6215,15 @@ function getDatabaseConfig() {
         fs3.mkdirSync(dir, { recursive: true });
       }
     } catch {
+      try {
+        const tmpDir = path3.resolve("/tmp");
+        if (!fs3.existsSync(tmpDir)) {
+          fs3.mkdirSync(tmpDir, { recursive: true });
+        }
+        url = "file:/tmp/law_firm.db";
+      } catch {
+        url = "file::memory:";
+      }
     }
   }
   return {
