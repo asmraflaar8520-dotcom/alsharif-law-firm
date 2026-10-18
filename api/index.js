@@ -1,10 +1,4 @@
 import { createRequire } from 'module'; globalThis.require = createRequire(import.meta.url); const require = globalThis.require;
-var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
-  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
-}) : x)(function(x) {
-  if (typeof require !== "undefined") return require.apply(this, arguments);
-  throw Error('Dynamic require of "' + x + '" is not supported');
-});
 
 // node_modules/@hono/node-server/dist/index.mjs
 import { Http2ServerRequest as Http2ServerRequest2, constants as h2constants } from "http2";
@@ -784,26 +778,26 @@ var throwNestingLimitExceeded = () => {
 };
 
 // node_modules/hono/dist/utils/url.js
-var splitPath = (path) => {
-  const paths = path.split("/");
+var splitPath = (path4) => {
+  const paths = path4.split("/");
   if (paths[0] === "") {
     paths.shift();
   }
   return paths;
 };
 var splitRoutingPath = (routePath) => {
-  const { groups, path } = extractGroupsFromPath(routePath);
-  const paths = splitPath(path);
+  const { groups, path: path4 } = extractGroupsFromPath(routePath);
+  const paths = splitPath(path4);
   return replaceGroupMarks(paths, groups);
 };
-var extractGroupsFromPath = (path) => {
+var extractGroupsFromPath = (path4) => {
   const groups = [];
-  path = path.replace(/\{[^}]+\}/g, (match2, index) => {
+  path4 = path4.replace(/\{[^}]+\}/g, (match2, index) => {
     const mark = `@${index}`;
     groups.push([mark, match2]);
     return mark;
   });
-  return { groups, path };
+  return { groups, path: path4 };
 };
 var replaceGroupMarks = (paths, groups) => {
   for (let i = groups.length - 1; i >= 0; i--) {
@@ -860,8 +854,8 @@ var getPath = (request) => {
       const queryIndex = url.indexOf("?", i);
       const hashIndex = url.indexOf("#", i);
       const end = queryIndex === -1 ? hashIndex === -1 ? void 0 : hashIndex : hashIndex === -1 ? queryIndex : Math.min(queryIndex, hashIndex);
-      const path = url.slice(start, end);
-      return tryDecodeURI(path.includes("%25") ? path.replace(/%25/g, "%2525") : path);
+      const path4 = url.slice(start, end);
+      return tryDecodeURI(path4.includes("%25") ? path4.replace(/%25/g, "%2525") : path4);
     } else if (charCode === 63 || charCode === 35) {
       break;
     }
@@ -878,11 +872,11 @@ var mergePath = (base, sub, ...rest) => {
   }
   return `${base?.[0] === "/" ? "" : "/"}${base}${sub === "/" ? "" : `${base?.at(-1) === "/" ? "" : "/"}${sub?.[0] === "/" ? sub.slice(1) : sub}`}`;
 };
-var checkOptionalParameter = (path) => {
-  if (path.charCodeAt(path.length - 1) !== 63 || !path.includes(":")) {
+var checkOptionalParameter = (path4) => {
+  if (path4.charCodeAt(path4.length - 1) !== 63 || !path4.includes(":")) {
     return null;
   }
-  const segments = path.split("/");
+  const segments = path4.split("/");
   const results = [];
   let basePath = "";
   segments.forEach((segment) => {
@@ -1024,9 +1018,9 @@ var HonoRequest = class {
    */
   path;
   bodyCache = {};
-  constructor(request, path = "/", matchResult = [[]]) {
+  constructor(request, path4 = "/", matchResult = [[]]) {
     this.raw = request;
-    this.path = path;
+    this.path = path4;
     this.#matchResult = matchResult;
   }
   param(key) {
@@ -1798,8 +1792,8 @@ var Hono = class _Hono {
         return this;
       };
     });
-    this.on = (method, path, ...handlers) => {
-      for (const p of [path].flat()) {
+    this.on = (method, path4, ...handlers) => {
+      for (const p of [path4].flat()) {
         this.#path = p;
         for (const m of [method].flat()) {
           const methodName = m.toUpperCase();
@@ -1857,8 +1851,8 @@ var Hono = class _Hono {
    * app.route("/api", app2) // GET /api/user
    * ```
    */
-  route(path, app2) {
-    const subApp = this.basePath(path);
+  route(path4, app2) {
+    const subApp = this.basePath(path4);
     app2.routes.map((r) => {
       let handler;
       if (app2.errorHandler === errorHandler) {
@@ -1884,9 +1878,9 @@ var Hono = class _Hono {
    * const api = new Hono().basePath('/api')
    * ```
    */
-  basePath(path) {
+  basePath(path4) {
     const subApp = this.#clone();
-    subApp._basePath = mergePath(this._basePath, path);
+    subApp._basePath = mergePath(this._basePath, path4);
     return subApp;
   }
   /**
@@ -1960,7 +1954,7 @@ var Hono = class _Hono {
    * })
    * ```
    */
-  mount(path, applicationHandler, options) {
+  mount(path4, applicationHandler, options) {
     let replaceRequest;
     let optionHandler;
     if (options) {
@@ -1987,7 +1981,7 @@ var Hono = class _Hono {
       return [c.env, executionContext];
     };
     replaceRequest ||= (() => {
-      const mergedPath = mergePath(this._basePath, path);
+      const mergedPath = mergePath(this._basePath, path4);
       const pathPrefixLength = mergedPath === "/" ? 0 : mergedPath.length;
       return (request) => {
         const url = new URL(request.url);
@@ -2002,18 +1996,18 @@ var Hono = class _Hono {
       }
       await next();
     };
-    this.#addRoute(METHOD_NAME_ALL, mergePath(path, "*"), handler);
+    this.#addRoute(METHOD_NAME_ALL, mergePath(path4, "*"), handler);
     return this;
   }
-  #addRoute(method, path, handler, baseRoutePath) {
-    path = mergePath(this._basePath, path);
+  #addRoute(method, path4, handler, baseRoutePath) {
+    path4 = mergePath(this._basePath, path4);
     const r = {
       basePath: baseRoutePath !== void 0 ? mergePath(this._basePath, baseRoutePath) : this._basePath,
-      path,
+      path: path4,
       method,
       handler
     };
-    this.router.add(method, path, [handler, r]);
+    this.router.add(method, path4, [handler, r]);
     this.routes.push(r);
   }
   #handleError(err, c) {
@@ -2026,10 +2020,10 @@ var Hono = class _Hono {
     if (method === "HEAD") {
       return (async () => new Response(null, await this.#dispatch(request, executionCtx, env, "GET")))();
     }
-    const path = this.getPath(request, { env });
-    const matchResult = this.router.match(method, path);
+    const path4 = this.getPath(request, { env });
+    const matchResult = this.router.match(method, path4);
     const c = new Context(request, {
-      path,
+      path: path4,
       matchResult,
       env,
       executionCtx,
@@ -2132,15 +2126,15 @@ var createNullObject = () => /* @__PURE__ */ Object.create(null);
 
 // node_modules/hono/dist/router/reg-exp-router/matcher.js
 var emptyParam = [];
-function match(method, path) {
+function match(method, path4) {
   const matchers = this.buildAllMatchers();
-  const match2 = ((method2, path2) => {
+  const match2 = ((method2, path22) => {
     const matcher = matchers[method2] || matchers[METHOD_NAME_ALL];
-    const staticMatch = matcher[2][path2];
+    const staticMatch = matcher[2][path22];
     if (staticMatch) {
       return staticMatch;
     }
-    const match3 = path2.match(matcher[0]);
+    const match3 = path22.match(matcher[0]);
     if (!match3) {
       return [[], emptyParam];
     }
@@ -2148,7 +2142,7 @@ function match(method, path) {
     return [matcher[1][index], match3];
   });
   this.match = match2;
-  return match2(method, path);
+  return match2(method, path4);
 }
 
 // node_modules/hono/dist/router/reg-exp-router/node.js
@@ -2265,14 +2259,14 @@ var Trie = class {
   #index = 0;
   // dynamic path -> [handler index, param assoc]; static paths are not registered
   paths = createNullObject();
-  insert(path, isStatic) {
+  insert(path4, isStatic) {
     if (isStatic) {
-      this.#root.insert(path.split(""), 0, [], this.#context, true);
+      this.#root.insert(path4.split(""), 0, [], this.#context, true);
       return;
     }
     const paramAssoc = [];
     const groups = [];
-    let markedPath = path;
+    let markedPath = path4;
     for (let i = 0; ; ) {
       let replaced = false;
       markedPath = markedPath.replace(/\{[^}]+\}/g, (m) => {
@@ -2297,7 +2291,7 @@ var Trie = class {
       }
     }
     this.#root.insert(tokens, this.#index, paramAssoc, this.#context, false);
-    this.paths[path] = [this.#index++, paramAssoc];
+    this.paths[path4] = [this.#index++, paramAssoc];
   }
   buildRegExp() {
     let regexp = this.#root.buildRegExpStr();
@@ -2324,17 +2318,17 @@ var Trie = class {
 
 // node_modules/hono/dist/router/reg-exp-router/router.js
 var wildcardRegExpCache = createNullObject();
-function buildWildcardRegExp(path) {
-  return wildcardRegExpCache[path] ??= new RegExp(
-    `^${path.replace(
+function buildWildcardRegExp(path4) {
+  return wildcardRegExpCache[path4] ??= new RegExp(
+    `^${path4.replace(
       /\/:[^/{}]+(?:\{\[\^\/]\+})?(?=[/{]|$)|\/?\*$|([.\\+*[^\]$()?{}|])/g,
       (match2, metaChar) => metaChar ? `\\${metaChar}` : match2 === "/*" ? TAIL_WILDCARD_REG_EXP_STR : match2 === "*" ? ONLY_WILDCARD_REG_EXP_STR : `/:${LABEL_REG_EXP_STR}`
     )}$`
   );
 }
-function findMiddleware(middleware, path) {
+function findMiddleware(middleware, path4) {
   for (const k of Object.keys(middleware).sort((a, b) => b.length - a.length)) {
-    if (buildWildcardRegExp(k).test(path)) {
+    if (buildWildcardRegExp(k).test(path4)) {
       return [...middleware[k]];
     }
   }
@@ -2350,14 +2344,14 @@ var RegExpRouter = class {
     this.#routes = { [METHOD_NAME_ALL]: createNullObject() };
     this.#tries = { [METHOD_NAME_ALL]: new Trie() };
   }
-  #insertPath(method, path) {
+  #insertPath(method, path4) {
     try {
-      this.#tries[method].insert(path, !/\*|\/:/.test(path));
+      this.#tries[method].insert(path4, !/\*|\/:/.test(path4));
     } catch (e) {
-      throw e === PATH_ERROR ? new UnsupportedPathError(path) : e;
+      throw e === PATH_ERROR ? new UnsupportedPathError(path4) : e;
     }
   }
-  add(method, path, handler) {
+  add(method, path4, handler) {
     const middleware = this.#middleware;
     const routes = this.#routes;
     if (!middleware) {
@@ -2373,35 +2367,35 @@ var RegExpRouter = class {
         }
       }
     }
-    if (path === "/*") {
-      path = "*";
+    if (path4 === "/*") {
+      path4 = "*";
     }
     const methods = method === METHOD_NAME_ALL ? Object.keys(middleware) : [method];
-    if (/\*$/.test(path)) {
-      const re = buildWildcardRegExp(path);
+    if (/\*$/.test(path4)) {
+      const re = buildWildcardRegExp(path4);
       for (const m of methods) {
-        if (!middleware[m][path]) {
-          this.#insertPath(m, path);
-          middleware[m][path] = findMiddleware(middleware[m], path) || findMiddleware(middleware[METHOD_NAME_ALL], path) || [];
+        if (!middleware[m][path4]) {
+          this.#insertPath(m, path4);
+          middleware[m][path4] = findMiddleware(middleware[m], path4) || findMiddleware(middleware[METHOD_NAME_ALL], path4) || [];
         }
       }
       for (const handlerMap of [middleware, routes]) {
         for (const m of methods) {
           for (const p in handlerMap[m]) {
-            re.test(p) && handlerMap[m][p].push([handler, path]);
+            re.test(p) && handlerMap[m][p].push([handler, path4]);
           }
         }
       }
       return;
     }
-    const paths = checkOptionalParameter(path) || [path];
-    for (const path2 of paths) {
+    const paths = checkOptionalParameter(path4) || [path4];
+    for (const path22 of paths) {
       for (const m of methods) {
-        if (!routes[m][path2]) {
-          this.#insertPath(m, path2);
-          routes[m][path2] = findMiddleware(middleware[m], path2) || findMiddleware(middleware[METHOD_NAME_ALL], path2) || [];
+        if (!routes[m][path22]) {
+          this.#insertPath(m, path22);
+          routes[m][path22] = findMiddleware(middleware[m], path22) || findMiddleware(middleware[METHOD_NAME_ALL], path22) || [];
         }
-        routes[m][path2].push([handler, path2]);
+        routes[m][path22].push([handler, path22]);
       }
     }
   }
@@ -2423,11 +2417,11 @@ var RegExpRouter = class {
     const handlerData = [];
     const [regexp, indexReplacementMap, paramReplacementMap] = trie.buildRegExp();
     for (const r of [middleware, routes]) {
-      for (const path in r) {
-        const handlers = r[path];
-        const pathData = trie.paths[path];
+      for (const path4 in r) {
+        const handlers = r[path4];
+        const pathData = trie.paths[path4];
         if (!pathData) {
-          staticMap[path] = [handlers.map(([h]) => [h, createNullObject()]), emptyParam];
+          staticMap[path4] = [handlers.map(([h]) => [h, createNullObject()]), emptyParam];
           continue;
         }
         handlerData[pathData[0]] = handlers.map(([h, handlerPath]) => [
@@ -2451,13 +2445,13 @@ var SmartRouter = class {
   constructor(init) {
     this.#routers = init.routers;
   }
-  add(method, path, handler) {
+  add(method, path4, handler) {
     if (!this.#routes) {
       throw new Error(MESSAGE_MATCHER_IS_ALREADY_BUILT);
     }
-    this.#routes.push([method, path, handler]);
+    this.#routes.push([method, path4, handler]);
   }
-  match(method, path) {
+  match(method, path4) {
     if (!this.#routes) {
       throw new Error("Fatal error");
     }
@@ -2472,7 +2466,7 @@ var SmartRouter = class {
         for (let i2 = 0, len2 = routes.length; i2 < len2; i2++) {
           router.add(...routes[i2]);
         }
-        res = router.match(method, path);
+        res = router.match(method, path4);
       } catch (e) {
         if (e instanceof UnsupportedPathError) {
           continue;
@@ -2507,9 +2501,9 @@ var Node2 = class _Node2 {
   #patterns = [];
   #pattern;
   #params = emptyParams;
-  insert(method, path, handler) {
+  insert(method, path4, handler) {
     let curNode = this;
-    const parts = splitRoutingPath(path);
+    const parts = splitRoutingPath(path4);
     const possibleKeys = /* @__PURE__ */ new Set();
     let i = 0;
     for (const p of parts) {
@@ -2549,12 +2543,12 @@ var Node2 = class _Node2 {
       }
     }
   }
-  search(method, path) {
+  search(method, path4) {
     const handlerSets = [];
     this.#params = emptyParams;
     const curNode = this;
     let curNodes = [curNode];
-    const parts = splitPath(path);
+    const parts = splitPath(path4);
     const curNodesQueue = [];
     const len = parts.length;
     let partOffsets = null;
@@ -2596,13 +2590,13 @@ var Node2 = class _Node2 {
           if (matcher !== true) {
             if (!partOffsets) {
               partOffsets = [];
-              let offset = path[0] === "/" ? 1 : 0;
+              let offset = path4[0] === "/" ? 1 : 0;
               for (let p = 0; p < len; p++) {
                 partOffsets[p] = offset;
                 offset += parts[p].length + 1;
               }
             }
-            const restPathString = path.slice(partOffsets[i]);
+            const restPathString = path4.slice(partOffsets[i]);
             const m = matcher.exec(restPathString);
             if (m) {
               params[name] = m[0];
@@ -2662,13 +2656,13 @@ var Node2 = class _Node2 {
 var TrieRouter = class {
   name = "TrieRouter";
   #node = new Node2();
-  add(method, path, handler) {
-    for (const result of checkOptionalParameter(path) || [path]) {
+  add(method, path4, handler) {
+    for (const result of checkOptionalParameter(path4) || [path4]) {
       this.#node.insert(method, result, handler);
     }
   }
-  match(method, path) {
-    return this.#node.search(method, path);
+  match(method, path4) {
+    return this.#node.search(method, path4);
   }
 };
 
@@ -2805,20 +2799,20 @@ var serveStatic = (options) => {
         return next();
       }
     }
-    let path = join(
+    let path4 = join(
       root,
       !optionPath && options.rewriteRequestPath ? options.rewriteRequestPath(filename) : filename
     );
-    if (options.isDir && await options.isDir(path)) {
-      path = join(path, DEFAULT_DOCUMENT);
+    if (options.isDir && await options.isDir(path4)) {
+      path4 = join(path4, DEFAULT_DOCUMENT);
     }
     const getContent = options.getContent;
-    let content = await getContent(path, c);
+    let content = await getContent(path4, c);
     if (content instanceof Response) {
       return c.newResponse(content.body, content);
     }
     if (content != null) {
-      const mimeType = options.mimes && getMimeType(path, options.mimes) || getMimeType(path);
+      const mimeType = options.mimes && getMimeType(path4, options.mimes) || getMimeType(path4);
       c.header("Content-Type", mimeType || "application/octet-stream");
       if (options.precompressed && (!mimeType || COMPRESSIBLE_CONTENT_TYPE_REGEX.test(mimeType))) {
         const acceptEncodingSet = new Set(
@@ -2828,7 +2822,7 @@ var serveStatic = (options) => {
           if (!acceptEncodingSet.has(encoding)) {
             continue;
           }
-          const compressedContent = await getContent(path + ENCODINGS[encoding], c);
+          const compressedContent = await getContent(path4 + ENCODINGS[encoding], c);
           if (compressedContent) {
             content = compressedContent;
             c.header("Content-Encoding", encoding);
@@ -2837,17 +2831,17 @@ var serveStatic = (options) => {
           }
         }
       }
-      await options.onFound?.(path, c);
+      await options.onFound?.(path4, c);
       return c.body(content);
     }
-    await options.onNotFound?.(path, c);
+    await options.onNotFound?.(path4, c);
     await next();
     return;
   };
 };
 
 // node_modules/hono/dist/adapter/cloudflare-workers/utils.js
-var getContentFromKVAsset = async (path, options) => {
+var getContentFromKVAsset = async (path4, options) => {
   let ASSET_MANIFEST;
   if (options && options.manifest) {
     if (typeof options.manifest === "string") {
@@ -2868,7 +2862,7 @@ var getContentFromKVAsset = async (path, options) => {
   } else {
     ASSET_NAMESPACE = __STATIC_CONTENT;
   }
-  const key = ASSET_MANIFEST[path];
+  const key = ASSET_MANIFEST[path4];
   if (!key) {
     return null;
   }
@@ -2882,8 +2876,8 @@ var getContentFromKVAsset = async (path, options) => {
 // node_modules/hono/dist/adapter/cloudflare-workers/serve-static.js
 var serveStatic2 = (options = {}) => {
   return async function serveStatic22(c, next) {
-    const getContent = async (path) => {
-      return getContentFromKVAsset(path, {
+    const getContent = async (path4) => {
+      return getContentFromKVAsset(path4, {
         manifest: options.manifest,
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
@@ -4542,6 +4536,20 @@ var DocumentsService = class {
     return results || [];
   }
   /**
+   * Fetches a single document by ID
+   */
+  static async getDocumentById(db, id) {
+    const doc = await db.prepare(
+      `SELECT d.*, cs.title AS case_title, cs.case_no, cs.year, cl.name AS client_name, u.name AS uploader
+       FROM documents d
+       LEFT JOIN cases cs ON cs.id=d.case_id
+       LEFT JOIN clients cl ON cl.id=COALESCE(d.client_id, cs.client_id)
+       LEFT JOIN users u ON u.id=d.uploaded_by
+       WHERE d.id = ?`
+    ).bind(id).first();
+    return doc || null;
+  }
+  /**
    * Creates a new document record
    */
   static async createDocument(db, data, currentUserId) {
@@ -4550,8 +4558,11 @@ var DocumentsService = class {
       throw new Error("\u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u0645\u0633\u062A\u0646\u062F \u0645\u0637\u0644\u0648\u0628");
     }
     const result = await db.prepare(
-      `INSERT INTO documents (case_id, client_id, title, doc_type, ref_no, date_issued, pages, notes, uploaded_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO documents (
+         case_id, client_id, title, doc_type, ref_no, date_issued, pages, notes, uploaded_by,
+         file_url, file_name, file_size, mime_type, storage_key
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       data.case_id ? Number(data.case_id) : null,
       data.client_id ? Number(data.client_id) : null,
@@ -4561,7 +4572,12 @@ var DocumentsService = class {
       data.date_issued || null,
       data.pages ? Number(data.pages) : null,
       cleanString(data.notes, MAX_NOTE_LENGTH),
-      currentUserId
+      currentUserId,
+      data.file_url ? cleanString(data.file_url, 1e3) : null,
+      data.file_name ? cleanString(data.file_name, 255) : null,
+      data.file_size ? Number(data.file_size) : null,
+      data.mime_type ? cleanString(data.mime_type, 100) : null,
+      data.storage_key ? cleanString(data.storage_key, 500) : null
     ).run();
     const id = result.meta.last_row_id;
     await logActivity(db, currentUserId, "document", id, "\u0625\u0646\u0634\u0627\u0621", `\u0645\u0633\u062A\u0646\u062F \u062C\u062F\u064A\u062F: ${title}`);
@@ -4582,6 +4598,20 @@ var DocumentsService = class {
     return results || [];
   }
   /**
+   * Fetches a single POA by ID
+   */
+  static async getPoaById(db, id) {
+    const poa = await db.prepare(
+      `SELECT p.*, cl.name AS client_name, u.name AS lawyer_name, cs.title AS case_title
+       FROM powers_of_attorney p
+       JOIN clients cl ON cl.id=p.client_id
+       LEFT JOIN users u ON u.id=p.lawyer_id
+       LEFT JOIN cases cs ON cs.id=p.case_id
+       WHERE p.id = ?`
+    ).bind(id).first();
+    return poa || null;
+  }
+  /**
    * Registers a new Power of Attorney
    */
   static async createPoa(db, data, currentUserId) {
@@ -4591,8 +4621,11 @@ var DocumentsService = class {
     }
     const status = data.status && isAllowed(data.status, [...ALLOWED_POA_STATUSES]) ? data.status : "\u0633\u0627\u0631\u064A";
     const result = await db.prepare(
-      `INSERT INTO powers_of_attorney (poa_no, client_id, case_id, lawyer_id, type, notary_office, issue_date, expiry_date, status, scope, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO powers_of_attorney (
+         poa_no, client_id, case_id, lawyer_id, type, notary_office, issue_date, expiry_date,
+         status, scope, notes, file_url, file_name, file_size, mime_type, storage_key
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       poa_no,
       Number(data.client_id),
@@ -4604,7 +4637,12 @@ var DocumentsService = class {
       data.expiry_date || null,
       status,
       cleanString(data.scope, MAX_TEXT_LENGTH),
-      cleanString(data.notes, MAX_NOTE_LENGTH)
+      cleanString(data.notes, MAX_NOTE_LENGTH),
+      data.file_url ? cleanString(data.file_url, 1e3) : null,
+      data.file_name ? cleanString(data.file_name, 255) : null,
+      data.file_size ? Number(data.file_size) : null,
+      data.mime_type ? cleanString(data.mime_type, 100) : null,
+      data.storage_key ? cleanString(data.storage_key, 500) : null
     ).run();
     const id = result.meta.last_row_id;
     await logActivity(db, currentUserId, "poa", id, "\u0625\u0646\u0634\u0627\u0621", `\u062A\u0648\u0643\u064A\u0644 \u062C\u062F\u064A\u062F: ${poa_no}`);
@@ -4629,9 +4667,35 @@ var DocumentsService = class {
     const status = data.status !== void 0 && isAllowed(data.status, [...ALLOWED_POA_STATUSES]) ? data.status : existing.status;
     const scope = data.scope !== void 0 ? cleanString(data.scope, MAX_TEXT_LENGTH) : existing.scope;
     const notes = data.notes !== void 0 ? cleanString(data.notes, MAX_NOTE_LENGTH) : existing.notes;
+    const file_url = data.file_url !== void 0 ? data.file_url : existing.file_url;
+    const file_name = data.file_name !== void 0 ? data.file_name : existing.file_name;
+    const file_size = data.file_size !== void 0 ? data.file_size ? Number(data.file_size) : null : existing.file_size;
+    const mime_type = data.mime_type !== void 0 ? data.mime_type : existing.mime_type;
+    const storage_key = data.storage_key !== void 0 ? data.storage_key : existing.storage_key;
     await db.prepare(
-      `UPDATE powers_of_attorney SET poa_no=?, client_id=?, case_id=?, lawyer_id=?, type=?, notary_office=?, issue_date=?, expiry_date=?, status=?, scope=?, notes=? WHERE id=?`
-    ).bind(poa_no, client_id, case_id, lawyer_id, type, notary_office, issue_date, expiry_date, status, scope, notes, id).run();
+      `UPDATE powers_of_attorney SET
+         poa_no=?, client_id=?, case_id=?, lawyer_id=?, type=?, notary_office=?, issue_date=?, expiry_date=?,
+         status=?, scope=?, notes=?, file_url=?, file_name=?, file_size=?, mime_type=?, storage_key=?
+       WHERE id=?`
+    ).bind(
+      poa_no,
+      client_id,
+      case_id,
+      lawyer_id,
+      type,
+      notary_office,
+      issue_date,
+      expiry_date,
+      status,
+      scope,
+      notes,
+      file_url,
+      file_name,
+      file_size,
+      mime_type,
+      storage_key,
+      id
+    ).run();
     await logActivity(db, currentUserId, "poa", Number(id), "\u062A\u062D\u062F\u064A\u062B", `\u062A\u062D\u062F\u064A\u062B \u0627\u0644\u062A\u0648\u0643\u064A\u0644: ${poa_no}`);
     return true;
   }
@@ -4656,13 +4720,353 @@ var DocumentsService = class {
   }
 };
 
+// src/storage/config.ts
+import path from "node:path";
+import fs from "node:fs";
+var ALLOWED_MIME_TYPES = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png"
+];
+var MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
+function getStorageConfig() {
+  const env = globalThis.process?.env || {};
+  const bucketName = env.R2_BUCKET_NAME || env.S3_BUCKET_NAME || env.AWS_S3_BUCKET;
+  const accessKeyId = env.R2_ACCESS_KEY_ID || env.AWS_ACCESS_KEY_ID;
+  const secretAccessKey = env.R2_SECRET_ACCESS_KEY || env.AWS_SECRET_ACCESS_KEY;
+  const accountId = env.R2_ACCOUNT_ID;
+  const endpoint = env.R2_ENDPOINT || (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : env.S3_ENDPOINT);
+  const region = env.AWS_REGION || env.R2_REGION || "auto";
+  const publicUrl = env.R2_PUBLIC_URL || env.S3_PUBLIC_URL;
+  const isCloudConfigured = Boolean(bucketName && accessKeyId && secretAccessKey);
+  const localUploadDir = path.resolve(process.cwd(), "data", "uploads");
+  if (!isCloudConfigured) {
+    try {
+      if (!fs.existsSync(localUploadDir)) {
+        fs.mkdirSync(localUploadDir, { recursive: true });
+      }
+    } catch {
+    }
+  }
+  return {
+    bucketName,
+    endpoint,
+    region,
+    accessKeyId,
+    secretAccessKey,
+    publicUrl,
+    maxFileSizeBytes: MAX_FILE_SIZE_BYTES,
+    allowedMimeTypes: ALLOWED_MIME_TYPES,
+    isCloudConfigured,
+    localUploadDir
+  };
+}
+
+// src/storage/service.ts
+import crypto3 from "node:crypto";
+import path2 from "node:path";
+import fs2 from "node:fs";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+var cachedS3Client = null;
+var StorageService = class {
+  /**
+   * Sanitizes user-provided filenames to prevent path traversal and shell injection.
+   */
+  static sanitizeFilename(rawName) {
+    if (!rawName || !rawName.trim()) return "document.pdf";
+    const base = path2.basename(rawName.trim());
+    const sanitized = base.replace(/[^\w\u0600-\u06FF.-]/g, "_").replace(/\.{2,}/g, ".").trim();
+    return sanitized || "document.pdf";
+  }
+  /**
+   * Enforces server-side file security constraints.
+   */
+  static validateFile(size, mimeType, filename) {
+    if (!size || size <= 0) {
+      return { valid: false, error: "\u0627\u0644\u0645\u0644\u0641 \u0641\u0627\u0631\u063A \u0623\u0648 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D" };
+    }
+    if (size > MAX_FILE_SIZE_BYTES) {
+      return { valid: false, error: "\u062D\u062C\u0645 \u0627\u0644\u0645\u0644\u0641 \u064A\u062A\u062C\u0627\u0648\u0632 \u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0627\u0644\u0645\u0633\u0645\u0648\u062D \u0628\u0647 (15 \u0645\u064A\u062C\u0627\u0628\u0627\u064A\u062A)" };
+    }
+    const cleanMime = (mimeType || "").toLowerCase().trim();
+    if (!ALLOWED_MIME_TYPES.includes(cleanMime)) {
+      return {
+        valid: false,
+        error: "\u0646\u0648\u0639 \u0627\u0644\u0645\u0644\u0641 \u063A\u064A\u0631 \u0645\u062F\u0639\u0648\u0645. \u0627\u0644\u0635\u064A\u063A \u0627\u0644\u0645\u062F\u0639\u0648\u0645\u0629 \u0647\u064A: PDF (\u0645\u0633\u062A\u0646\u062F\u0627\u062A), JPEG, PNG (\u0635\u0648\u0631)"
+      };
+    }
+    const ext = path2.extname(filename).toLowerCase();
+    const validExtensions = {
+      "application/pdf": [".pdf"],
+      "image/jpeg": [".jpg", ".jpeg"],
+      "image/png": [".png"]
+    };
+    const expectedExts = validExtensions[cleanMime] || [];
+    if (!expectedExts.includes(ext)) {
+      return {
+        valid: false,
+        error: `\u0627\u0645\u062A\u062F\u0627\u062F \u0627\u0644\u0645\u0644\u0641 (${ext}) \u0644\u0627 \u064A\u062A\u0637\u0627\u0628\u0642 \u0645\u0639 \u0646\u0648\u0639 \u0627\u0644\u0645\u062D\u062A\u0648\u0649 (${cleanMime})`
+      };
+    }
+    return { valid: true };
+  }
+  /**
+   * Lazily initializes and caches the S3Client instance for Cloudflare R2 / AWS S3.
+   */
+  static getS3Client() {
+    const config2 = getStorageConfig();
+    if (!config2.isCloudConfigured) return null;
+    if (!cachedS3Client) {
+      cachedS3Client = new S3Client({
+        region: config2.region,
+        endpoint: config2.endpoint,
+        credentials: {
+          accessKeyId: config2.accessKeyId,
+          secretAccessKey: config2.secretAccessKey
+        }
+      });
+    }
+    return cachedS3Client;
+  }
+  /**
+   * Uploads a file to Cloudflare R2 / AWS S3 or the local persistent storage fallback.
+   */
+  static async uploadFile(input) {
+    const config2 = getStorageConfig();
+    const sanitizedName = this.sanitizeFilename(input.filename);
+    const validation = this.validateFile(input.buffer.length, input.mimeType, sanitizedName);
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
+    const folder = (input.folder || "documents").replace(/[^a-zA-Z0-9_-]/g, "");
+    const randHex = Array.from(crypto3.randomBytes(6)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    const uniquePrefix = `${Date.now()}-${randHex}`;
+    const storageKey = `${folder}/${uniquePrefix}-${sanitizedName}`;
+    const s3 = this.getS3Client();
+    if (s3 && config2.bucketName) {
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: config2.bucketName,
+          Key: storageKey,
+          Body: input.buffer,
+          ContentType: input.mimeType,
+          Metadata: {
+            "original-filename": encodeURIComponent(sanitizedName),
+            "uploaded-at": (/* @__PURE__ */ new Date()).toISOString()
+          }
+        })
+      );
+      const file_url = config2.publicUrl ? `${config2.publicUrl.replace(/\/$/, "")}/${storageKey}` : `/api/files/${storageKey}`;
+      return {
+        file_url,
+        file_name: sanitizedName,
+        file_size: input.buffer.length,
+        mime_type: input.mimeType,
+        storage_key: storageKey
+      };
+    } else {
+      const targetPath = path2.resolve(config2.localUploadDir, storageKey);
+      const targetDir = path2.dirname(targetPath);
+      if (!fs2.existsSync(targetDir)) {
+        fs2.mkdirSync(targetDir, { recursive: true });
+      }
+      fs2.writeFileSync(targetPath, Buffer.from(input.buffer));
+      return {
+        file_url: `/api/files/${storageKey}`,
+        file_name: sanitizedName,
+        file_size: input.buffer.length,
+        mime_type: input.mimeType,
+        storage_key: storageKey
+      };
+    }
+  }
+  /**
+   * Retrieves a file for streaming or preview.
+   */
+  static async getFile(storageKey) {
+    const config2 = getStorageConfig();
+    if (!storageKey || storageKey.includes("..") || path2.isAbsolute(storageKey)) {
+      throw new Error("\u0645\u0633\u0627\u0631 \u063A\u064A\u0631 \u0645\u0635\u0631\u062D \u0628\u0647");
+    }
+    const normalizedKey = path2.normalize(storageKey).replace(/\\/g, "/");
+    if (normalizedKey.includes("..") || path2.isAbsolute(normalizedKey)) {
+      throw new Error("\u0645\u0633\u0627\u0631 \u063A\u064A\u0631 \u0645\u0635\u0631\u062D \u0628\u0647");
+    }
+    const s3 = this.getS3Client();
+    if (s3 && config2.bucketName) {
+      try {
+        const response = await s3.send(
+          new GetObjectCommand({
+            Bucket: config2.bucketName,
+            Key: normalizedKey
+          })
+        );
+        if (!response.Body) return null;
+        const bytes = await response.Body.transformToByteArray();
+        const filename = this.sanitizeFilename(path2.basename(normalizedKey));
+        return {
+          data: Buffer.from(bytes),
+          mimeType: response.ContentType || "application/octet-stream",
+          filename,
+          size: Number(response.ContentLength || bytes.length)
+        };
+      } catch (err) {
+        if (err.name === "NoSuchKey" || err.$metadata?.httpStatusCode === 404) {
+          return null;
+        }
+        throw err;
+      }
+    } else {
+      const localPath = path2.resolve(config2.localUploadDir, normalizedKey);
+      if (!fs2.existsSync(localPath)) {
+        return null;
+      }
+      const data = fs2.readFileSync(localPath);
+      const ext = path2.extname(localPath).toLowerCase();
+      const mimes = {
+        ".pdf": "application/pdf",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png"
+      };
+      return {
+        data,
+        mimeType: mimes[ext] || "application/octet-stream",
+        filename: path2.basename(localPath),
+        size: data.length
+      };
+    }
+  }
+  /**
+   * Deletes a file from storage.
+   */
+  static async deleteFile(storageKey) {
+    const config2 = getStorageConfig();
+    const normalizedKey = path2.normalize(storageKey).replace(/^(\.\.(\/|\\|$))+/, "");
+    const s3 = this.getS3Client();
+    if (s3 && config2.bucketName) {
+      try {
+        await s3.send(
+          new DeleteObjectCommand({
+            Bucket: config2.bucketName,
+            Key: normalizedKey
+          })
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    } else {
+      const localPath = path2.resolve(config2.localUploadDir, normalizedKey);
+      if (fs2.existsSync(localPath)) {
+        fs2.unlinkSync(localPath);
+        return true;
+      }
+      return false;
+    }
+  }
+};
+
 // src/routes/documents.ts
 var documentRoutes = new Hono2();
+documentRoutes.post("/upload", async (c) => {
+  const user = await requireUser(c);
+  if (user instanceof Response) return user;
+  try {
+    const contentType = c.req.header("content-type") || "";
+    let buffer = null;
+    let filename = "";
+    let mimeType = "";
+    let folder = "documents";
+    if (contentType.includes("application/json")) {
+      const body = await c.req.json().catch(() => ({}));
+      if (!body.base64 || !body.filename) {
+        return c.json({ error: "\u064A\u0631\u062C\u0649 \u062A\u0642\u062F\u064A\u0645 \u0645\u062D\u062A\u0648\u0649 \u0627\u0644\u0645\u0644\u0641 \u0628\u0635\u064A\u063A\u0629 base64 \u0648\u0627\u0633\u0645 \u0627\u0644\u0645\u0644\u0641" }, 400);
+      }
+      buffer = Buffer.from(body.base64, "base64");
+      filename = body.filename;
+      mimeType = body.mime_type || body.mimeType || "application/pdf";
+      folder = body.folder || "documents";
+    } else {
+      const body = await c.req.parseBody();
+      const rawFile = body["file"];
+      if (!rawFile || !(rawFile instanceof File)) {
+        return c.json({ error: "\u0644\u0645 \u064A\u062A\u0645 \u062A\u0648\u0641\u064A\u0631 \u0623\u064A \u0645\u0644\u0641 \u0644\u0644\u0631\u0641\u0639" }, 400);
+      }
+      const arrayBuf = await rawFile.arrayBuffer();
+      buffer = Buffer.from(arrayBuf);
+      filename = rawFile.name;
+      mimeType = rawFile.type || "application/octet-stream";
+      folder = typeof body["folder"] === "string" ? body["folder"] : "documents";
+    }
+    if (!buffer) {
+      return c.json({ error: "\u0644\u0645 \u064A\u062A\u0645 \u062A\u0648\u0641\u064A\u0631 \u0623\u064A \u0645\u0644\u0641 \u0644\u0644\u0631\u0641\u0639" }, 400);
+    }
+    const uploaded = await StorageService.uploadFile({
+      buffer,
+      filename,
+      mimeType,
+      folder
+    });
+    return c.json(uploaded, 201);
+  } catch (err) {
+    return c.json({ error: err.message || "\u0641\u0634\u0644 \u0631\u0641\u0639 \u0627\u0644\u0645\u0644\u0641" }, 400);
+  }
+});
+documentRoutes.get("/files/:folder/:filename", async (c) => {
+  const user = await getCurrentUser(c);
+  if (!user) {
+    return c.json({ error: "\u063A\u064A\u0631 \u0645\u0635\u0631\u062D \u0644\u0644\u0648\u0635\u0648\u0644 \u0625\u0644\u0649 \u0647\u0630\u0627 \u0627\u0644\u0645\u0644\u0641" }, 401);
+  }
+  const folder = c.req.param("folder");
+  const filename = c.req.param("filename");
+  const storageKey = `${folder}/${filename}`;
+  try {
+    const fileResult = await StorageService.getFile(storageKey);
+    if (!fileResult) {
+      return c.json({ error: "\u0627\u0644\u0645\u0644\u0641 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" }, 404);
+    }
+    const isDownload = c.req.query("download") === "1";
+    const disposition = isDownload ? "attachment" : "inline";
+    return new Response(new Uint8Array(fileResult.data), {
+      headers: {
+        "Content-Type": fileResult.mimeType,
+        "Content-Length": String(fileResult.size),
+        "Content-Disposition": `${disposition}; filename="${encodeURIComponent(fileResult.filename)}"`,
+        "Cache-Control": "private, max-age=3600"
+      }
+    });
+  } catch (err) {
+    return c.json({ error: err.message || "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0627\u0644\u0645\u0644\u0641" }, 400);
+  }
+});
+documentRoutes.delete("/files/:folder/:filename", async (c) => {
+  const user = await requireUser(c);
+  if (user instanceof Response) return user;
+  const folder = c.req.param("folder");
+  const filename = c.req.param("filename");
+  const storageKey = `${folder}/${filename}`;
+  try {
+    const deleted = await StorageService.deleteFile(storageKey);
+    return c.json({ ok: deleted });
+  } catch (err) {
+    return c.json({ error: err.message || "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0627\u0644\u0645\u0644\u0641" }, 400);
+  }
+});
 documentRoutes.get("/documents", async (c) => {
   const user = await requireUser(c);
   if (user instanceof Response) return user;
   const documents = await DocumentsService.getDocuments(c.env.DB);
   return c.json(documents);
+});
+documentRoutes.get("/documents/:id", async (c) => {
+  const user = await requireUser(c);
+  if (user instanceof Response) return user;
+  const doc = await DocumentsService.getDocumentById(c.env.DB, c.req.param("id"));
+  if (!doc) {
+    return c.json({ error: "\u0627\u0644\u0645\u0633\u062A\u0646\u062F \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" }, 404);
+  }
+  return c.json(doc);
 });
 documentRoutes.post("/documents", async (c) => {
   const user = await requireUser(c);
@@ -4680,6 +5084,15 @@ documentRoutes.get("/poas", async (c) => {
   if (user instanceof Response) return user;
   const poas = await DocumentsService.getPoas(c.env.DB);
   return c.json(poas);
+});
+documentRoutes.get("/poas/:id", async (c) => {
+  const user = await requireUser(c);
+  if (user instanceof Response) return user;
+  const poa = await DocumentsService.getPoaById(c.env.DB, c.req.param("id"));
+  if (!poa) {
+    return c.json({ error: "\u0627\u0644\u062A\u0648\u0643\u064A\u0644 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" }, 404);
+  }
+  return c.json(poa);
 });
 documentRoutes.post("/poas", async (c) => {
   const user = await requireUser(c);
@@ -5181,93 +5594,706 @@ function renderAppLayout() {
 </html>`;
 }
 
+// src/db/config.ts
+import path3 from "node:path";
+import fs3 from "node:fs";
+function getDatabaseConfig() {
+  const env = globalThis.process?.env || {};
+  const remoteUrl = env.TURSO_DATABASE_URL || env.DATABASE_URL || env.LIBSQL_URL;
+  if (remoteUrl && !remoteUrl.startsWith("file:")) {
+    return {
+      url: remoteUrl,
+      authToken: env.TURSO_AUTH_TOKEN || env.DATABASE_AUTH_TOKEN,
+      isRemote: true
+    };
+  }
+  const localPath = env.SQLITE_PATH || env.DATABASE_PATH || "./data/law_firm.db";
+  const isMemory = localPath === ":memory:" || localPath === "file::memory:";
+  let url = localPath;
+  if (!url.startsWith("file:") && !isMemory) {
+    url = `file:${localPath}`;
+  }
+  if (url.startsWith("file:") && !isMemory) {
+    try {
+      const cleanPath = url.replace(/^file:/, "");
+      const resolved = path3.resolve(cleanPath);
+      const dir = path3.dirname(resolved);
+      if (!fs3.existsSync(dir)) {
+        fs3.mkdirSync(dir, { recursive: true });
+      }
+    } catch {
+    }
+  }
+  return {
+    url,
+    isRemote: false
+  };
+}
+
+// src/db/schema.ts
+var SCHEMA_SQL = `
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  title TEXT,
+  email TEXT UNIQUE NOT NULL,
+  phone TEXT,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'lawyer',
+  department TEXT,
+  bar_number TEXT,
+  bar_year INTEGER,
+  hourly_rate REAL DEFAULT 0,
+  bio TEXT,
+  initials TEXT,
+  color TEXT,
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  expires_at TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS courts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  type TEXT,
+  city TEXT,
+  circuit TEXT,
+  address TEXT
+);
+
+CREATE TABLE IF NOT EXISTS case_types (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL,
+  code TEXT
+);
+
+CREATE TABLE IF NOT EXISTS clients (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL DEFAULT 'individual',
+  name TEXT NOT NULL,
+  national_id TEXT,
+  tax_id TEXT,
+  commercial_reg TEXT,
+  nationality TEXT DEFAULT '\u0645\u0635\u0631\u064A',
+  phone TEXT,
+  phone2 TEXT,
+  email TEXT,
+  address TEXT,
+  city TEXT,
+  occupation TEXT,
+  company_rep TEXT,
+  notes TEXT,
+  status TEXT DEFAULT 'active',
+  assigned_lawyer_id INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (assigned_lawyer_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS cases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_no TEXT NOT NULL,
+  case_number TEXT GENERATED ALWAYS AS (case_no) VIRTUAL,
+  year INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  case_type_id INTEGER,
+  court_id INTEGER,
+  circuit TEXT,
+  degree TEXT DEFAULT '\u0627\u0628\u062A\u062F\u0627\u0626\u064A',
+  status TEXT DEFAULT '\u0645\u062A\u062F\u0627\u0648\u0644\u0629',
+  priority TEXT DEFAULT '\u0639\u0627\u062F\u064A\u0629',
+  client_id INTEGER NOT NULL,
+  opposing_name TEXT,
+  opposing_lawyer TEXT,
+  lead_lawyer_id INTEGER,
+  subject TEXT,
+  claim_value REAL DEFAULT 0,
+  currency TEXT DEFAULT 'EGP',
+  filing_date TEXT,
+  next_action TEXT,
+  outcome TEXT,
+  closed_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (case_type_id) REFERENCES case_types(id) ON DELETE SET NULL,
+  FOREIGN KEY (court_id) REFERENCES courts(id) ON DELETE SET NULL,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (lead_lawyer_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS case_lawyers (
+  case_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  role TEXT DEFAULT '\u0645\u0633\u0627\u0639\u062F',
+  PRIMARY KEY (case_id, user_id),
+  FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS hearings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_id INTEGER NOT NULL,
+  hearing_date TEXT NOT NULL,
+  hearing_time TEXT,
+  court_id INTEGER,
+  circuit TEXT,
+  type TEXT DEFAULT '\u0645\u0631\u0627\u0641\u0639\u0629',
+  purpose TEXT,
+  result TEXT,
+  next_date TEXT,
+  lawyer_id INTEGER,
+  status TEXT DEFAULT '\u0642\u0627\u062F\u0645\u0629',
+  notes TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+  FOREIGN KEY (court_id) REFERENCES courts(id) ON DELETE SET NULL,
+  FOREIGN KEY (lawyer_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  description TEXT,
+  case_id INTEGER,
+  client_id INTEGER,
+  assignee_id INTEGER,
+  creator_id INTEGER,
+  due_date TEXT,
+  due_time TEXT,
+  priority TEXT DEFAULT '\u0639\u0627\u062F\u064A\u0629',
+  status TEXT DEFAULT '\u0645\u0641\u062A\u0648\u062D\u0629',
+  category TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  completed_at TEXT,
+  FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS documents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_id INTEGER,
+  client_id INTEGER,
+  title TEXT NOT NULL,
+  doc_type TEXT,
+  ref_no TEXT,
+  date_issued TEXT,
+  pages INTEGER,
+  notes TEXT,
+  uploaded_by INTEGER,
+  file_url TEXT,
+  file_name TEXT,
+  file_size INTEGER,
+  mime_type TEXT,
+  storage_key TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS powers_of_attorney (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  poa_no TEXT NOT NULL,
+  client_id INTEGER NOT NULL,
+  case_id INTEGER,
+  lawyer_id INTEGER,
+  type TEXT NOT NULL,
+  notary_office TEXT,
+  issue_date TEXT,
+  expiry_date TEXT,
+  status TEXT DEFAULT '\u0633\u0627\u0631\u064A',
+  scope TEXT,
+  notes TEXT,
+  file_url TEXT,
+  file_name TEXT,
+  file_size INTEGER,
+  mime_type TEXT,
+  storage_key TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE SET NULL,
+  FOREIGN KEY (lawyer_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Transparent view and triggers for 'poas' table name compatibility
+CREATE VIEW IF NOT EXISTS poas AS SELECT * FROM powers_of_attorney;
+
+CREATE TRIGGER IF NOT EXISTS trg_poas_insert INSTEAD OF INSERT ON poas
+BEGIN
+  INSERT INTO powers_of_attorney (id, poa_no, client_id, case_id, lawyer_id, type, notary_office, issue_date, expiry_date, status, scope, notes, file_url, file_name, file_size, mime_type, storage_key, created_at)
+  VALUES (new.id, new.poa_no, new.client_id, new.case_id, new.lawyer_id, new.type, new.notary_office, new.issue_date, new.expiry_date, new.status, new.scope, new.notes, new.file_url, new.file_name, new.file_size, new.mime_type, new.storage_key, coalesce(new.created_at, datetime('now')));
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_poas_update INSTEAD OF UPDATE ON poas
+BEGIN
+  UPDATE powers_of_attorney SET
+    poa_no = new.poa_no,
+    client_id = new.client_id,
+    case_id = new.case_id,
+    lawyer_id = new.lawyer_id,
+    type = new.type,
+    notary_office = new.notary_office,
+    issue_date = new.issue_date,
+    expiry_date = new.expiry_date,
+    status = new.status,
+    scope = new.scope,
+    notes = new.notes,
+    file_url = new.file_url,
+    file_name = new.file_name,
+    file_size = new.file_size,
+    mime_type = new.mime_type,
+    storage_key = new.storage_key
+  WHERE id = old.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_poas_delete INSTEAD OF DELETE ON poas
+BEGIN
+  DELETE FROM powers_of_attorney WHERE id = old.id;
+END;
+
+CREATE TABLE IF NOT EXISTS invoices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  invoice_no TEXT NOT NULL UNIQUE,
+  client_id INTEGER NOT NULL,
+  case_id INTEGER,
+  issue_date TEXT NOT NULL,
+  due_date TEXT,
+  subtotal REAL DEFAULT 0,
+  tax REAL DEFAULT 0,
+  discount REAL DEFAULT 0,
+  total REAL DEFAULT 0,
+  paid REAL DEFAULT 0,
+  status TEXT DEFAULT '\u0645\u0633\u0648\u062F\u0629',
+  notes TEXT,
+  created_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS invoice_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  invoice_id INTEGER NOT NULL,
+  description TEXT NOT NULL,
+  qty REAL DEFAULT 1,
+  unit_price REAL DEFAULT 0,
+  amount REAL DEFAULT 0,
+  FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS payments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  invoice_id INTEGER,
+  client_id INTEGER NOT NULL,
+  amount REAL NOT NULL,
+  method TEXT DEFAULT '\u062A\u062D\u0648\u064A\u0644',
+  paid_at TEXT NOT NULL,
+  reference TEXT,
+  notes TEXT,
+  received_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE SET NULL,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (received_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS expenses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_id INTEGER,
+  title TEXT NOT NULL,
+  category TEXT,
+  amount REAL NOT NULL,
+  expense_date TEXT NOT NULL,
+  billable INTEGER DEFAULT 1,
+  billed INTEGER DEFAULT 0,
+  vendor TEXT,
+  notes TEXT,
+  created_by INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS time_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  case_id INTEGER,
+  work_date TEXT NOT NULL,
+  hours REAL NOT NULL,
+  description TEXT,
+  billable INTEGER DEFAULT 1,
+  billed INTEGER DEFAULT 0,
+  rate REAL DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS contracts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  client_id INTEGER NOT NULL,
+  type TEXT,
+  start_date TEXT,
+  end_date TEXT,
+  value REAL DEFAULT 0,
+  status TEXT DEFAULT '\u0633\u0627\u0631\u064A',
+  notes TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_id INTEGER,
+  client_id INTEGER,
+  user_id INTEGER,
+  content TEXT NOT NULL,
+  pinned INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS activities (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER,
+  entity_type TEXT,
+  entity_id INTEGER,
+  action TEXT,
+  detail TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS reminders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER,
+  title TEXT NOT NULL,
+  remind_at TEXT NOT NULL,
+  case_id INTEGER,
+  is_done INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+);
+
+-- ========================================================
+-- Indexes & Performance Accelerators
+-- ========================================================
+
+-- Mandatory Required Indexes
+CREATE INDEX IF NOT EXISTS idx_cases_case_number_client ON cases(case_number, client_id);
+CREATE INDEX IF NOT EXISTS idx_cases_case_no_client ON cases(case_no, client_id);
+CREATE INDEX IF NOT EXISTS idx_hearings_hearing_date_case ON hearings(hearing_date, case_id);
+CREATE INDEX IF NOT EXISTS idx_documents_case_id ON documents(case_id);
+
+-- Query Acceleration & Relational Indexes
+CREATE INDEX IF NOT EXISTS idx_cases_client ON cases(client_id);
+CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(status);
+CREATE INDEX IF NOT EXISTS idx_cases_lawyer ON cases(lead_lawyer_id);
+CREATE INDEX IF NOT EXISTS idx_cases_lawyer_status ON cases(lead_lawyer_id, status);
+CREATE INDEX IF NOT EXISTS idx_hearings_date ON hearings(hearing_date);
+CREATE INDEX IF NOT EXISTS idx_hearings_case ON hearings(case_id);
+CREATE INDEX IF NOT EXISTS idx_hearings_upcoming ON hearings(hearing_date, status);
+CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_user_status ON tasks(assignee_id, status);
+CREATE INDEX IF NOT EXISTS idx_invoices_client ON invoices(client_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_status_due ON invoices(status, due_date);
+CREATE INDEX IF NOT EXISTS idx_invoices_issue_date ON invoices(issue_date);
+CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_poas_client ON powers_of_attorney(client_id);
+CREATE INDEX IF NOT EXISTS idx_poas_expiry ON powers_of_attorney(expiry_date);
+CREATE INDEX IF NOT EXISTS idx_payments_client ON payments(client_id);
+CREATE INDEX IF NOT EXISTS idx_payments_paid_at ON payments(paid_at);
+CREATE INDEX IF NOT EXISTS idx_expenses_case ON expenses(case_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date);
+CREATE INDEX IF NOT EXISTS idx_expenses_billable ON expenses(billable, billed);
+CREATE INDEX IF NOT EXISTS idx_time_user ON time_entries(user_id);
+CREATE INDEX IF NOT EXISTS idx_time_billable ON time_entries(billable, billed);
+`;
+
 // src/utils/embedded-data.ts
-var SCHEMA_SQL = "-- \u0645\u0643\u062A\u0628 \u0627\u0644\u0634\u0631\u064A\u0641 \u0648\u0634\u0631\u0643\u0627\u0647 \u0644\u0644\u0645\u062D\u0627\u0645\u0627\u0629 \u2014 \u0645\u062E\u0637\u0637 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0643\u0627\u0645\u0644\n\nPRAGMA foreign_keys = ON;\n\nCREATE TABLE IF NOT EXISTS users (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  name TEXT NOT NULL,\n  title TEXT,\n  email TEXT UNIQUE NOT NULL,\n  phone TEXT,\n  password_hash TEXT NOT NULL,\n  role TEXT NOT NULL DEFAULT 'lawyer', -- managing_partner, partner, senior, lawyer, intern, admin, accountant, secretary\n  department TEXT,\n  bar_number TEXT,\n  bar_year INTEGER,\n  hourly_rate REAL DEFAULT 0,\n  bio TEXT,\n  initials TEXT,\n  color TEXT,\n  is_active INTEGER DEFAULT 1,\n  created_at TEXT DEFAULT (datetime('now'))\n);\n\nCREATE TABLE IF NOT EXISTS sessions (\n  token TEXT PRIMARY KEY,\n  user_id INTEGER NOT NULL,\n  expires_at TEXT NOT NULL,\n  created_at TEXT DEFAULT (datetime('now')),\n  FOREIGN KEY (user_id) REFERENCES users(id)\n);\n\nCREATE TABLE IF NOT EXISTS courts (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  name TEXT NOT NULL,\n  type TEXT,\n  city TEXT,\n  circuit TEXT,\n  address TEXT\n);\n\nCREATE TABLE IF NOT EXISTS case_types (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  name TEXT NOT NULL,\n  category TEXT NOT NULL,\n  code TEXT\n);\n\nCREATE TABLE IF NOT EXISTS clients (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  type TEXT NOT NULL DEFAULT 'individual', -- individual, company\n  name TEXT NOT NULL,\n  national_id TEXT,\n  tax_id TEXT,\n  commercial_reg TEXT,\n  nationality TEXT DEFAULT '\u0645\u0635\u0631\u064A',\n  phone TEXT,\n  phone2 TEXT,\n  email TEXT,\n  address TEXT,\n  city TEXT,\n  occupation TEXT,\n  company_rep TEXT,\n  notes TEXT,\n  status TEXT DEFAULT 'active', -- active, vip, inactive\n  assigned_lawyer_id INTEGER,\n  created_at TEXT DEFAULT (datetime('now')),\n  FOREIGN KEY (assigned_lawyer_id) REFERENCES users(id)\n);\n\nCREATE TABLE IF NOT EXISTS cases (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  case_no TEXT NOT NULL,\n  year INTEGER NOT NULL,\n  title TEXT NOT NULL,\n  case_type_id INTEGER,\n  court_id INTEGER,\n  circuit TEXT,\n  degree TEXT DEFAULT '\u0627\u0628\u062A\u062F\u0627\u0626\u064A', -- \u0627\u0628\u062A\u062F\u0627\u0626\u064A\u060C \u0627\u0633\u062A\u0626\u0646\u0627\u0641\u060C \u0646\u0642\u0636\u060C \u0625\u062F\u0627\u0631\u064A\n  status TEXT DEFAULT '\u0645\u062A\u062F\u0627\u0648\u0644\u0629',\n  priority TEXT DEFAULT '\u0639\u0627\u062F\u064A\u0629', -- \u0639\u0627\u062C\u0644\u0629\u060C \u0639\u0627\u0644\u064A\u0629\u060C \u0639\u0627\u062F\u064A\u0629\u060C \u0645\u0646\u062E\u0641\u0636\u0629\n  client_id INTEGER NOT NULL,\n  opposing_name TEXT,\n  opposing_lawyer TEXT,\n  lead_lawyer_id INTEGER,\n  subject TEXT,\n  claim_value REAL DEFAULT 0,\n  currency TEXT DEFAULT 'EGP',\n  filing_date TEXT,\n  next_action TEXT,\n  outcome TEXT,\n  closed_at TEXT,\n  created_at TEXT DEFAULT (datetime('now')),\n  updated_at TEXT DEFAULT (datetime('now')),\n  FOREIGN KEY (case_type_id) REFERENCES case_types(id),\n  FOREIGN KEY (court_id) REFERENCES courts(id),\n  FOREIGN KEY (client_id) REFERENCES clients(id),\n  FOREIGN KEY (lead_lawyer_id) REFERENCES users(id)\n);\n\nCREATE TABLE IF NOT EXISTS case_lawyers (\n  case_id INTEGER NOT NULL,\n  user_id INTEGER NOT NULL,\n  role TEXT DEFAULT '\u0645\u0633\u0627\u0639\u062F',\n  PRIMARY KEY (case_id, user_id),\n  FOREIGN KEY (case_id) REFERENCES cases(id),\n  FOREIGN KEY (user_id) REFERENCES users(id)\n);\n\nCREATE TABLE IF NOT EXISTS hearings (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  case_id INTEGER NOT NULL,\n  hearing_date TEXT NOT NULL,\n  hearing_time TEXT,\n  court_id INTEGER,\n  circuit TEXT,\n  type TEXT DEFAULT '\u0645\u0631\u0627\u0641\u0639\u0629', -- \u0645\u0631\u0627\u0641\u0639\u0629\u060C \u062D\u0643\u0645\u060C \u062A\u062D\u0642\u064A\u0642\u060C \u062E\u0628\u0631\u0629\u060C \u0635\u0644\u062D\u060C \u062A\u0646\u0641\u064A\u0630\n  purpose TEXT,\n  result TEXT,\n  next_date TEXT,\n  lawyer_id INTEGER,\n  status TEXT DEFAULT '\u0642\u0627\u062F\u0645\u0629', -- \u0642\u0627\u062F\u0645\u0629\u060C \u062A\u0645\u062A\u060C \u062A\u0623\u062C\u064A\u0644\u060C \u0634\u0637\u0628\u060C \u062D\u062C\u0632 \u0644\u0644\u062D\u0643\u0645\n  notes TEXT,\n  created_at TEXT DEFAULT (datetime('now')),\n  FOREIGN KEY (case_id) REFERENCES cases(id),\n  FOREIGN KEY (court_id) REFERENCES courts(id),\n  FOREIGN KEY (lawyer_id) REFERENCES users(id)\n);\n\nCREATE TABLE IF NOT EXISTS tasks (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  title TEXT NOT NULL,\n  description TEXT,\n  case_id INTEGER,\n  client_id INTEGER,\n  assignee_id INTEGER,\n  creator_id INTEGER,\n  due_date TEXT,\n  due_time TEXT,\n  priority TEXT DEFAULT '\u0639\u0627\u062F\u064A\u0629',\n  status TEXT DEFAULT '\u0645\u0641\u062A\u0648\u062D\u0629', -- \u0645\u0641\u062A\u0648\u062D\u0629\u060C \u062C\u0627\u0631\u064A\u0629\u060C \u0645\u0643\u062A\u0645\u0644\u0629\u060C \u0645\u0644\u063A\u0627\u0629\n  category TEXT, -- \u0645\u0631\u0627\u0641\u0639\u0629\u060C \u0628\u062D\u062B\u060C \u0635\u064A\u0627\u063A\u0629\u060C \u0625\u0639\u0644\u0627\u0646\u060C \u062A\u0646\u0641\u064A\u0630\u060C \u0625\u062F\u0627\u0631\u064A\n  created_at TEXT DEFAULT (datetime('now')),\n  completed_at TEXT,\n  FOREIGN KEY (case_id) REFERENCES cases(id),\n  FOREIGN KEY (client_id) REFERENCES clients(id),\n  FOREIGN KEY (assignee_id) REFERENCES users(id),\n  FOREIGN KEY (creator_id) REFERENCES users(id)\n);\n\nCREATE TABLE IF NOT EXISTS documents (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  case_id INTEGER,\n  client_id INTEGER,\n  title TEXT NOT NULL,\n  doc_type TEXT, -- \u0635\u062D\u064A\u0641\u0629\u060C \u0645\u0630\u0643\u0631\u0629\u060C \u062D\u0643\u0645\u060C \u062A\u0648\u0643\u064A\u0644\u060C \u0639\u0642\u062F\u060C \u0625\u0646\u0630\u0627\u0631\u060C \u0635\u0648\u0631\u0629 \u0628\u0637\u0627\u0642\u0629\u060C \u0633\u062C\u0644 \u062A\u062C\u0627\u0631\u064A\u060C \u0623\u062E\u0631\u0649\n  ref_no TEXT,\n  date_issued TEXT,\n  pages INTEGER,\n  notes TEXT,\n  uploaded_by INTEGER,\n  created_at TEXT DEFAULT (datetime('now')),\n  FOREIGN KEY (case_id) REFERENCES cases(id),\n  FOREIGN KEY (client_id) REFERENCES clients(id),\n  FOREIGN KEY (uploaded_by) REFERENCES users(id)\n);\n\nCREATE TABLE IF NOT EXISTS powers_of_attorney (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  poa_no TEXT NOT NULL,\n  client_id INTEGER NOT NULL,\n  case_id INTEGER,\n  lawyer_id INTEGER,\n  type TEXT NOT NULL, -- \u0639\u0627\u0645 \u0642\u0636\u0627\u064A\u0627\u060C \u0631\u0633\u0645\u064A \u0639\u0627\u0645\u060C \u062E\u0627\u0635\u060C \u0625\u062F\u0627\u0631\u064A\u060C \u0628\u064A\u0639\u060C \u0625\u062F\u0627\u0631\u0629\n  notary_office TEXT,\n  issue_date TEXT,\n  expiry_date TEXT,\n  status TEXT DEFAULT '\u0633\u0627\u0631\u064A', -- \u0633\u0627\u0631\u064A\u060C \u0645\u0646\u062A\u0647\u064D\u060C \u0645\u0644\u063A\u0649\n  scope TEXT,\n  notes TEXT,\n  created_at TEXT DEFAULT (datetime('now')),\n  FOREIGN KEY (client_id) REFERENCES clients(id),\n  FOREIGN KEY (case_id) REFERENCES cases(id),\n  FOREIGN KEY (lawyer_id) REFERENCES users(id)\n);\n\nCREATE TABLE IF NOT EXISTS invoices (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  invoice_no TEXT NOT NULL UNIQUE,\n  client_id INTEGER NOT NULL,\n  case_id INTEGER,\n  issue_date TEXT NOT NULL,\n  due_date TEXT,\n  subtotal REAL DEFAULT 0,\n  tax REAL DEFAULT 0,\n  discount REAL DEFAULT 0,\n  total REAL DEFAULT 0,\n  paid REAL DEFAULT 0,\n  status TEXT DEFAULT '\u0645\u0633\u0648\u062F\u0629', -- \u0645\u0633\u0648\u062F\u0629\u060C \u0635\u0627\u062F\u0631\u0629\u060C \u062C\u0632\u0626\u064A\u060C \u0645\u0633\u062F\u062F\u0629\u060C \u0645\u062A\u0623\u062E\u0631\u0629\u060C \u0645\u0644\u063A\u0627\u0629\n  notes TEXT,\n  created_by INTEGER,\n  created_at TEXT DEFAULT (datetime('now')),\n  FOREIGN KEY (client_id) REFERENCES clients(id),\n  FOREIGN KEY (case_id) REFERENCES cases(id),\n  FOREIGN KEY (created_by) REFERENCES users(id)\n);\n\nCREATE TABLE IF NOT EXISTS invoice_items (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  invoice_id INTEGER NOT NULL,\n  description TEXT NOT NULL,\n  qty REAL DEFAULT 1,\n  unit_price REAL DEFAULT 0,\n  amount REAL DEFAULT 0,\n  FOREIGN KEY (invoice_id) REFERENCES invoices(id)\n);\n\nCREATE TABLE IF NOT EXISTS payments (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  invoice_id INTEGER,\n  client_id INTEGER NOT NULL,\n  amount REAL NOT NULL,\n  method TEXT DEFAULT '\u062A\u062D\u0648\u064A\u0644', -- \u0646\u0642\u062F\u064A\u060C \u0634\u064A\u0643\u060C \u062A\u062D\u0648\u064A\u0644\u060C \u0628\u0637\u0627\u0642\u0629\n  paid_at TEXT NOT NULL,\n  reference TEXT,\n  notes TEXT,\n  received_by INTEGER,\n  created_at TEXT DEFAULT (datetime('now')),\n  FOREIGN KEY (invoice_id) REFERENCES invoices(id),\n  FOREIGN KEY (client_id) REFERENCES clients(id),\n  FOREIGN KEY (received_by) REFERENCES users(id)\n);\n\nCREATE TABLE IF NOT EXISTS expenses (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  case_id INTEGER,\n  title TEXT NOT NULL,\n  category TEXT, -- \u0631\u0633\u0648\u0645 \u0645\u062D\u0643\u0645\u0629\u060C \u0625\u0639\u0644\u0627\u0646\u0627\u062A\u060C \u062E\u0628\u0631\u0629\u060C \u0627\u0646\u062A\u0642\u0627\u0644\u0627\u062A\u060C \u062A\u0635\u0648\u064A\u0631\u060C \u062A\u0631\u062C\u0645\u0629\u060C \u0623\u062E\u0631\u0649\n  amount REAL NOT NULL,\n  expense_date TEXT NOT NULL,\n  billable INTEGER DEFAULT 1,\n  billed INTEGER DEFAULT 0,\n  vendor TEXT,\n  notes TEXT,\n  created_by INTEGER,\n  created_at TEXT DEFAULT (datetime('now')),\n  FOREIGN KEY (case_id) REFERENCES cases(id),\n  FOREIGN KEY (created_by) REFERENCES users(id)\n);\n\nCREATE TABLE IF NOT EXISTS time_entries (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  user_id INTEGER NOT NULL,\n  case_id INTEGER,\n  work_date TEXT NOT NULL,\n  hours REAL NOT NULL,\n  description TEXT,\n  billable INTEGER DEFAULT 1,\n  billed INTEGER DEFAULT 0,\n  rate REAL DEFAULT 0,\n  created_at TEXT DEFAULT (datetime('now')),\n  FOREIGN KEY (user_id) REFERENCES users(id),\n  FOREIGN KEY (case_id) REFERENCES cases(id)\n);\n\nCREATE TABLE IF NOT EXISTS contracts (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  title TEXT NOT NULL,\n  client_id INTEGER NOT NULL,\n  type TEXT, -- \u0623\u062A\u0639\u0627\u0628\u060C \u0627\u0633\u062A\u0634\u0627\u0631\u0629\u060C \u0634\u0631\u0627\u0643\u0629\u060C \u0639\u0645\u0644\u060C \u0625\u064A\u062C\u0627\u0631\u060C \u0628\u064A\u0639\u060C \u062A\u0633\u0648\u064A\u0629\n  start_date TEXT,\n  end_date TEXT,\n  value REAL DEFAULT 0,\n  status TEXT DEFAULT '\u0633\u0627\u0631\u064A', -- \u0645\u0633\u0648\u062F\u0629\u060C \u0633\u0627\u0631\u064A\u060C \u0645\u0646\u062A\u0647\u064D\u060C \u0645\u0641\u0633\u0648\u062E\n  notes TEXT,\n  created_at TEXT DEFAULT (datetime('now')),\n  FOREIGN KEY (client_id) REFERENCES clients(id)\n);\n\nCREATE TABLE IF NOT EXISTS notes (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  case_id INTEGER,\n  client_id INTEGER,\n  user_id INTEGER,\n  content TEXT NOT NULL,\n  pinned INTEGER DEFAULT 0,\n  created_at TEXT DEFAULT (datetime('now')),\n  FOREIGN KEY (case_id) REFERENCES cases(id),\n  FOREIGN KEY (client_id) REFERENCES clients(id),\n  FOREIGN KEY (user_id) REFERENCES users(id)\n);\n\nCREATE TABLE IF NOT EXISTS activities (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  user_id INTEGER,\n  entity_type TEXT,\n  entity_id INTEGER,\n  action TEXT,\n  detail TEXT,\n  created_at TEXT DEFAULT (datetime('now')),\n  FOREIGN KEY (user_id) REFERENCES users(id)\n);\n\nCREATE TABLE IF NOT EXISTS reminders (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  user_id INTEGER,\n  title TEXT NOT NULL,\n  remind_at TEXT NOT NULL,\n  case_id INTEGER,\n  is_done INTEGER DEFAULT 0,\n  created_at TEXT DEFAULT (datetime('now')),\n  FOREIGN KEY (user_id) REFERENCES users(id),\n  FOREIGN KEY (case_id) REFERENCES cases(id)\n);\n\nCREATE INDEX IF NOT EXISTS idx_cases_client ON cases(client_id);\nCREATE INDEX IF NOT EXISTS idx_cases_status ON cases(status);\nCREATE INDEX IF NOT EXISTS idx_cases_lawyer ON cases(lead_lawyer_id);\nCREATE INDEX IF NOT EXISTS idx_hearings_date ON hearings(hearing_date);\nCREATE INDEX IF NOT EXISTS idx_hearings_case ON hearings(case_id);\nCREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);\nCREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);\nCREATE INDEX IF NOT EXISTS idx_invoices_client ON invoices(client_id);\nCREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name);\nCREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);\nCREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);\nCREATE INDEX IF NOT EXISTS idx_poas_client ON powers_of_attorney(client_id);\nCREATE INDEX IF NOT EXISTS idx_poas_expiry ON powers_of_attorney(expiry_date);\nCREATE INDEX IF NOT EXISTS idx_payments_client ON payments(client_id);\nCREATE INDEX IF NOT EXISTS idx_expenses_case ON expenses(case_id);\nCREATE INDEX IF NOT EXISTS idx_time_user ON time_entries(user_id);\n\n\n-- Performance Indexes for High-Velocity Queries & Dashboards\n-- Accelerated index-only scans for hearings, invoices, tasks, and cases\n\nCREATE INDEX IF NOT EXISTS idx_hearings_upcoming ON hearings(hearing_date, status);\nCREATE INDEX IF NOT EXISTS idx_hearings_case_date ON hearings(case_id, hearing_date);\nCREATE INDEX IF NOT EXISTS idx_invoices_status_due ON invoices(status, due_date);\nCREATE INDEX IF NOT EXISTS idx_invoices_issue_date ON invoices(issue_date);\nCREATE INDEX IF NOT EXISTS idx_payments_paid_at ON payments(paid_at);\nCREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date);\nCREATE INDEX IF NOT EXISTS idx_expenses_billable ON expenses(billable, billed);\nCREATE INDEX IF NOT EXISTS idx_time_billable ON time_entries(billable, billed);\nCREATE INDEX IF NOT EXISTS idx_tasks_user_status ON tasks(assignee_id, status);\nCREATE INDEX IF NOT EXISTS idx_cases_lawyer_status ON cases(lead_lawyer_id, status);\n";
 var SEED_SQL = "-- \u0628\u064A\u0627\u0646\u0627\u062A \u062A\u062C\u0631\u064A\u0628\u064A\u0629 \u2014 \u0645\u0643\u062A\u0628 \u0627\u0644\u0634\u0631\u064A\u0641 \u0648\u0634\u0631\u0643\u0627\u0647 \u0644\u0644\u0645\u062D\u0627\u0645\u0627\u0629\n-- \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u0644\u0643\u0644 \u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645\u064A\u0646: sharif2026\n-- \u0627\u0644\u0647\u0627\u0634\u0627\u062A \u0645\u0648\u0644\u0651\u062F\u0629 \u0628\u0627\u0633\u062A\u062E\u062F\u0627\u0645 PBKDF2-SHA256 (100,000 \u062A\u0643\u0631\u0627\u0631) \u0628\u0623\u0645\u0644\u0627\u062D \u0639\u0634\u0648\u0627\u0626\u064A\u0629 \u0644\u0643\u0644 \u0645\u0633\u062A\u062E\u062F\u0645\n\nINSERT OR IGNORE INTO users (id, name, title, email, phone, password_hash, role, department, bar_number, bar_year, hourly_rate, bio, initials, color, is_active) VALUES\n(1, '\u0627\u0644\u0645\u0633\u062A\u0634\u0627\u0631 \u0623\u062D\u0645\u062F \u0639\u0628\u062F\u0627\u0644\u0639\u0632\u064A\u0632 \u0627\u0644\u0634\u0631\u064A\u0641', '\u0627\u0644\u0634\u0631\u064A\u0643 \u0627\u0644\u0645\u062F\u064A\u0631', 'ahmed@alsharif.law', '01000001001', '100000$ebde639c3cf68e46c6c1c07b7b02ec1a$55527c1aeba063609c3391ab9c72bda9e42ab50cae08c03bbfbc22c791e64684', 'managing_partner', '\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0645\u0643\u062A\u0628', '12345', 1988, 4500, '\u0645\u062D\u0627\u0645\u064D \u0623\u0645\u0627\u0645 \u0645\u062D\u0643\u0645\u0629 \u0627\u0644\u0646\u0642\u0636 \u0648\u0627\u0644\u062F\u0633\u062A\u0648\u0631\u064A\u0629 \u0627\u0644\u0639\u0644\u064A\u0627. \u0623\u0643\u062B\u0631 \u0645\u0646 35 \u0639\u0627\u0645\u0627\u064B \u0641\u064A \u0627\u0644\u062A\u0642\u0627\u0636\u064A \u0627\u0644\u062A\u062C\u0627\u0631\u064A \u0648\u0627\u0644\u062C\u0646\u0627\u0626\u064A \u0627\u0644\u0646\u0648\u0639\u064A.', '\u0623\u0634', '#C9A227', 1),\n(2, '\u0623.\u062F. \u0645\u0646\u0649 \u0639\u0628\u062F\u0627\u0644\u0641\u062A\u0627\u062D \u062D\u0633\u0646\u064A', '\u0634\u0631\u064A\u0643\u0629 \u0623\u0648\u0644\u0649 \u2014 \u0645\u062F\u0646\u064A \u0648\u062A\u062C\u0627\u0631\u064A', 'mona@alsharif.law', '01000001002', '100000$8fa5ad09dd78af039b5feb1bc601e959$e5359673b5620781d14e7e0513e6ab665fc0ef9ef3fc72efcd60ed38b16d60b1', 'partner', '\u0627\u0644\u0645\u062F\u0646\u064A \u0648\u0627\u0644\u062A\u062C\u0627\u0631\u064A', '23456', 1996, 3800, '\u0623\u0633\u062A\u0627\u0630\u0629 \u0627\u0644\u0642\u0627\u0646\u0648\u0646 \u0627\u0644\u0645\u062F\u0646\u064A \u0628\u062C\u0627\u0645\u0639\u0629 \u0627\u0644\u0642\u0627\u0647\u0631\u0629. \u0645\u062A\u062E\u0635\u0635\u0629 \u0641\u064A \u0645\u0646\u0627\u0632\u0639\u0627\u062A \u0627\u0644\u0634\u0631\u0643\u0627\u062A \u0648\u0627\u0644\u0639\u0642\u0648\u062F \u0627\u0644\u062F\u0648\u0644\u064A\u0629.', '\u0645\u062D', '#8B6914', 1),\n(3, '\u0627\u0644\u0623\u0633\u062A\u0627\u0630 \u0643\u0631\u064A\u0645 \u062D\u0633\u0646\u064A \u0645\u0646\u0635\u0648\u0631', '\u0634\u0631\u064A\u0643 \u2014 \u0627\u0644\u062C\u0646\u0627\u0626\u064A', 'karim@alsharif.law', '01000001003', '100000$0632224b8725cdc86cf256cf7558503e$92c988e088998d6d2fe6a9563b7f1f72b34179650bb9d08483d0bb922ef43e19', 'partner', '\u0627\u0644\u062C\u0646\u0627\u0626\u064A', '34567', 2004, 3200, '\u0645\u062D\u0627\u0645\u064D \u062C\u0646\u0627\u0626\u064A \u0646\u0648\u0639\u064A \u0623\u0645\u0627\u0645 \u0627\u0644\u062C\u0646\u0627\u064A\u0627\u062A \u0648\u0627\u0644\u0646\u0642\u0636. \u062E\u0628\u0631\u0629 \u0641\u064A \u0642\u0636\u0627\u064A\u0627 \u0627\u0644\u0623\u0645\u0648\u0627\u0644 \u0627\u0644\u0639\u0627\u0645\u0629 \u0648\u0627\u0644\u062C\u0631\u0627\u0626\u0645 \u0627\u0644\u0627\u0642\u062A\u0635\u0627\u062F\u064A\u0629.', '\u0643\u0645', '#1F4E79', 1),\n(4, '\u0627\u0644\u0623\u0633\u062A\u0627\u0630\u0629 \u0646\u0627\u062F\u064A\u0629 \u0641\u0624\u0627\u062F \u0633\u0627\u0644\u0645', '\u0645\u062D\u0627\u0645\u064A\u0629 \u0623\u0648\u0644\u0649 \u2014 \u0623\u062D\u0648\u0627\u0644 \u0634\u062E\u0635\u064A\u0629', 'nadia@alsharif.law', '01000001004', '100000$5bc5ae0151ec9782ce88e5a5b32cef0b$26fbfbd225566bbb08e70933fb98ac85a2249ee80980f4f3d6285d19709dc765', 'senior', '\u0627\u0644\u0623\u062D\u0648\u0627\u0644 \u0627\u0644\u0634\u062E\u0635\u064A\u0629', '45678', 2009, 2200, '\u0645\u062A\u062E\u0635\u0635\u0629 \u0641\u064A \u0645\u0633\u0627\u0626\u0644 \u0627\u0644\u0623\u0633\u0631\u0629 \u0648\u0627\u0644\u0648\u0644\u0627\u064A\u0629 \u0639\u0644\u0649 \u0627\u0644\u0645\u0627\u0644 \u0648\u0627\u0644\u0645\u0648\u0627\u0631\u064A\u062B \u0623\u0645\u0627\u0645 \u0645\u062D\u0627\u0643\u0645 \u0627\u0644\u0623\u0633\u0631\u0629.', '\u0646\u0641', '#6B3FA0', 1),\n(5, '\u0627\u0644\u0623\u0633\u062A\u0627\u0630 \u064A\u0648\u0633\u0641 \u0627\u0644\u0645\u0646\u0634\u0627\u0648\u064A', '\u0645\u062D\u0627\u0645\u064D \u2014 \u0625\u062F\u0627\u0631\u064A \u0648\u062F\u0633\u062A\u0648\u0631\u064A', 'youssef@alsharif.law', '01000001005', '100000$0375178bdab038878169668204f0b1b6$dff63891f3733f7ff040f1e2ebaabebe478781c434821f5fb4c51e8a2692954e', 'lawyer', '\u0627\u0644\u0625\u062F\u0627\u0631\u064A', '56789', 2015, 1800, '\u0645\u0646\u0627\u0632\u0639\u0627\u062A \u0645\u062C\u0644\u0633 \u0627\u0644\u062F\u0648\u0644\u0629 \u0648\u0627\u0644\u0639\u0642\u0648\u062F \u0627\u0644\u0625\u062F\u0627\u0631\u064A\u0629 \u0648\u0627\u0644\u062A\u0639\u0648\u064A\u0636\u0627\u062A \u0639\u0646 \u0627\u0644\u0642\u0631\u0627\u0631\u0627\u062A \u0627\u0644\u0625\u062F\u0627\u0631\u064A\u0629.', '\u064A\u0645', '#2E5A3C', 1),\n(6, '\u0627\u0644\u0623\u0633\u062A\u0627\u0630\u0629 \u0633\u0644\u0645\u0649 \u0631\u0636\u0648\u0627\u0646 \u0639\u0644\u064A', '\u0645\u062D\u0627\u0645\u064A\u0629 \u2014 \u0639\u0645\u0644 \u0648\u062A\u0623\u0645\u064A\u0646\u0627\u062A', 'salma@alsharif.law', '01000001006', '100000$cdacd3184ae52d214e10b4137f874438$fb5d9da4e97814b2d474c7e69ce4cdd17dfc8d5b84b28a5c7164dbfcfc51c8f6', 'lawyer', '\u0627\u0644\u0639\u0645\u0644', '67890', 2018, 1500, '\u0642\u0636\u0627\u064A\u0627 \u0627\u0644\u0639\u0645\u0644 \u0627\u0644\u062C\u0645\u0627\u0639\u064A \u0648\u0627\u0644\u0641\u0635\u0644 \u0627\u0644\u062A\u0639\u0633\u0641\u064A \u0648\u0627\u0644\u062A\u0623\u0645\u064A\u0646\u0627\u062A \u0627\u0644\u0627\u062C\u062A\u0645\u0627\u0639\u064A\u0629.', '\u0633\u0631', '#8B3A3A', 1),\n(7, '\u0627\u0644\u0623\u0633\u062A\u0627\u0630 \u0647\u0634\u0627\u0645 \u0646\u0628\u064A\u0644 \u0639\u0637\u064A\u0629', '\u0645\u062D\u0627\u0645\u064D \u062A\u062D\u062A \u0627\u0644\u062A\u0645\u0631\u064A\u0646', 'hesham@alsharif.law', '01000001007', '100000$9adfafb127a4cc31bdd9dfbe116210eb$879c5b389c052cf940da98eb2b3bc513bd2f688ce7507f0751720b7f917c5a60', 'intern', '\u0627\u0644\u062A\u062F\u0631\u064A\u0628', NULL, 2025, 400, '\u062F\u0641\u0639\u0629 2024 \u0643\u0644\u064A\u0629 \u0627\u0644\u062D\u0642\u0648\u0642 \u2014 \u062C\u0627\u0645\u0639\u0629 \u0639\u064A\u0646 \u0634\u0645\u0633.', '\u0647\u0646', '#4A5568', 1),\n(8, '\u0627\u0644\u0623\u0633\u062A\u0627\u0630\u0629 \u0641\u0627\u0637\u0645\u0629 \u062C\u0644\u0627\u0644 \u0645\u062D\u0645\u0648\u062F', '\u0645\u062F\u064A\u0631\u0629 \u0627\u0644\u0645\u0643\u062A\u0628', 'fatma@alsharif.law', '01000001008', '100000$2380d9667bcb3de3304443f36069d905$edb04be0da999d471f06d0c03450ccaac5fa2a39a6015bd68bce9d0bf57df2ae', 'secretary', '\u0627\u0644\u0633\u0643\u0631\u062A\u0627\u0631\u064A\u0629', NULL, NULL, 0, '\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0645\u0648\u0627\u0639\u064A\u062F \u0648\u0627\u0644\u0623\u0631\u0634\u064A\u0641 \u0648\u0627\u0644\u062A\u0648\u0643\u064A\u0644\u0627\u062A \u0648\u0627\u0644\u0625\u0639\u0644\u0627\u0646\u0627\u062A.', '\u0641\u062C', '#B8860B', 1),\n(9, '\u0627\u0644\u0623\u0633\u062A\u0627\u0630 \u0639\u0645\u0631\u0648 \u0634\u0627\u0647\u064A\u0646', '\u0627\u0644\u0645\u062D\u0627\u0633\u0628 \u0627\u0644\u0645\u0627\u0644\u064A', 'amr@alsharif.law', '01000001009', '100000$028206bbb9773d39218432f7a69a855d$cd228e2da485cff32b63fb361f034e6485e35d1695aab5996f8266b3f7604664', 'accountant', '\u0627\u0644\u0645\u0627\u0644\u064A\u0629', NULL, NULL, 0, '\u0627\u0644\u0641\u0648\u0627\u062A\u064A\u0631 \u0648\u0627\u0644\u062A\u062D\u0635\u064A\u0644 \u0648\u0627\u0644\u0636\u0631\u0627\u0626\u0628 \u0648\u0627\u0644\u0645\u0635\u0631\u0648\u0641\u0627\u062A \u0627\u0644\u0642\u0636\u0627\u0626\u064A\u0629.', '\u0639\u0634', '#2C5282', 1);\n\nINSERT OR IGNORE INTO courts (id, name, type, city, circuit, address) VALUES\n(1, '\u0645\u062D\u0643\u0645\u0629 \u062C\u0646\u0648\u0628 \u0627\u0644\u0642\u0627\u0647\u0631\u0629 \u0627\u0644\u0627\u0628\u062A\u062F\u0627\u0626\u064A\u0629', '\u0627\u0628\u062A\u062F\u0627\u0626\u064A', '\u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0645\u062F\u0646\u064A', '\u062F\u0627\u0631 \u0627\u0644\u0642\u0636\u0627\u0621 \u0627\u0644\u0639\u0627\u0644\u064A \u2014 \u0648\u0633\u0637 \u0627\u0644\u0628\u0644\u062F'),\n(2, '\u0645\u062D\u0643\u0645\u0629 \u0634\u0645\u0627\u0644 \u0627\u0644\u0642\u0627\u0647\u0631\u0629 \u0627\u0644\u0627\u0628\u062A\u062F\u0627\u0626\u064A\u0629', '\u0627\u0628\u062A\u062F\u0627\u0626\u064A', '\u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0645\u062F\u0646\u064A', '\u0634\u0628\u0631\u0627'),\n(3, '\u0645\u062D\u0643\u0645\u0629 \u062C\u0646\u0627\u064A\u0627\u062A \u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u062C\u0646\u0627\u064A\u0627\u062A', '\u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0627\u0644\u062C\u0646\u0627\u064A\u0627\u062A', '\u0645\u062F\u064A\u0646\u0629 \u0646\u0635\u0631 \u2014 \u0645\u062C\u0645\u0639 \u0627\u0644\u0645\u062D\u0627\u0643\u0645'),\n(4, '\u0645\u062D\u0643\u0645\u0629 \u062C\u0646\u062D \u0642\u0635\u0631 \u0627\u0644\u0646\u064A\u0644', '\u062C\u0646\u062D', '\u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u062C\u0646\u062D', '\u0642\u0635\u0631 \u0627\u0644\u0646\u064A\u0644'),\n(5, '\u0645\u062D\u0643\u0645\u0629 \u0627\u0644\u0623\u0633\u0631\u0629 \u2014 \u0645\u0635\u0631 \u0627\u0644\u062C\u062F\u064A\u062F\u0629', '\u0623\u0633\u0631\u0629', '\u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0623\u0633\u0631\u0629', '\u0645\u0635\u0631 \u0627\u0644\u062C\u062F\u064A\u062F\u0629'),\n(6, '\u0645\u062D\u0643\u0645\u0629 \u0627\u0633\u062A\u0626\u0646\u0627\u0641 \u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0627\u0633\u062A\u0626\u0646\u0627\u0641', '\u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0627\u0633\u062A\u0626\u0646\u0627\u0641', '\u062F\u0627\u0631 \u0627\u0644\u0642\u0636\u0627\u0621 \u0627\u0644\u0639\u0627\u0644\u064A'),\n(7, '\u0645\u062D\u0643\u0645\u0629 \u0627\u0644\u0646\u0642\u0636', '\u0646\u0642\u0636', '\u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0646\u0642\u0636', '\u062F\u0627\u0631 \u0627\u0644\u0642\u0636\u0627\u0621 \u0627\u0644\u0639\u0627\u0644\u064A'),\n(8, '\u0645\u062D\u0643\u0645\u0629 \u0627\u0644\u0642\u0636\u0627\u0621 \u0627\u0644\u0625\u062F\u0627\u0631\u064A', '\u0625\u062F\u0627\u0631\u064A', '\u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0645\u062C\u0644\u0633 \u0627\u0644\u062F\u0648\u0644\u0629', '\u0642\u0635\u0631 \u0627\u0644\u0639\u064A\u0646\u064A'),\n(9, '\u0627\u0644\u0645\u062D\u0643\u0645\u0629 \u0627\u0644\u0625\u062F\u0627\u0631\u064A\u0629 \u0627\u0644\u0639\u0644\u064A\u0627', '\u0625\u062F\u0627\u0631\u064A \u0639\u0644\u064A\u0627', '\u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0645\u062C\u0644\u0633 \u0627\u0644\u062F\u0648\u0644\u0629', '\u0642\u0635\u0631 \u0627\u0644\u0639\u064A\u0646\u064A'),\n(10, '\u0645\u062D\u0643\u0645\u0629 \u0639\u0645\u0627\u0644 \u062C\u0646\u0648\u0628 \u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0639\u0645\u0627\u0644', '\u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0639\u0645\u0627\u0644', '\u0627\u0644\u0633\u064A\u062F\u0629 \u0632\u064A\u0646\u0628'),\n(11, '\u0645\u062D\u0643\u0645\u0629 \u0627\u0642\u062A\u0635\u0627\u062F\u064A \u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0627\u0642\u062A\u0635\u0627\u062F\u064A', '\u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0627\u0642\u062A\u0635\u0627\u062F\u064A', '\u0627\u0644\u062A\u062C\u0645\u0639 \u0627\u0644\u062E\u0627\u0645\u0633'),\n(12, '\u0645\u062D\u0643\u0645\u0629 \u062A\u0646\u0641\u064A\u0630 \u062C\u0646\u0648\u0628 \u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u062A\u0646\u0641\u064A\u0630', '\u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u062A\u0646\u0641\u064A\u0630', '\u0627\u0644\u0633\u064A\u062F\u0629 \u0632\u064A\u0646\u0628');\n\nINSERT OR IGNORE INTO case_types (id, name, category, code) VALUES\n(1, '\u0645\u062F\u0646\u064A \u0643\u0644\u064A', '\u0645\u062F\u0646\u064A', 'CIV'),\n(2, '\u0645\u062F\u0646\u064A \u062C\u0632\u0626\u064A', '\u0645\u062F\u0646\u064A', 'CIVP'),\n(3, '\u062A\u062C\u0627\u0631\u064A \u0643\u0644\u064A', '\u062A\u062C\u0627\u0631\u064A', 'COM'),\n(4, '\u0634\u0631\u0643\u0627\u062A', '\u062A\u062C\u0627\u0631\u064A', 'CO'),\n(5, '\u062C\u0646\u062D', '\u062C\u0646\u0627\u0626\u064A', 'MIS'),\n(6, '\u062C\u0646\u0627\u064A\u0627\u062A', '\u062C\u0646\u0627\u0626\u064A', 'FEL'),\n(7, '\u0646\u0642\u0636 \u062C\u0646\u0627\u0626\u064A', '\u062C\u0646\u0627\u0626\u064A', 'CASS'),\n(8, '\u0623\u062D\u0648\u0627\u0644 \u0634\u062E\u0635\u064A\u0629 \u0644\u0644\u0645\u0633\u0644\u0645\u064A\u0646', '\u0623\u0633\u0631\u0629', 'FAM'),\n(9, '\u0648\u0644\u0627\u064A\u0629 \u0639\u0644\u0649 \u0627\u0644\u0645\u0627\u0644', '\u0623\u0633\u0631\u0629', 'GRD'),\n(10, '\u0625\u0644\u063A\u0627\u0621 \u0642\u0631\u0627\u0631 \u0625\u062F\u0627\u0631\u064A', '\u0625\u062F\u0627\u0631\u064A', 'ADM'),\n(11, '\u062A\u0639\u0648\u064A\u0636 \u0625\u062F\u0627\u0631\u064A', '\u0625\u062F\u0627\u0631\u064A', 'ADT'),\n(12, '\u0641\u0635\u0644 \u062A\u0639\u0633\u0641\u064A', '\u0639\u0645\u0644', 'LAB'),\n(13, '\u0623\u0645\u0648\u0627\u0644 \u0639\u0627\u0645\u0629', '\u062C\u0646\u0627\u0626\u064A', 'PUB'),\n(14, '\u0634\u064A\u0643 \u0628\u062F\u0648\u0646 \u0631\u0635\u064A\u062F', '\u062C\u0646\u0627\u0626\u064A', 'CHK'),\n(15, '\u062A\u0646\u0641\u064A\u0630 \u0645\u0648\u0636\u0648\u0639\u064A', '\u062A\u0646\u0641\u064A\u0630', 'EXE'),\n(16, '\u062A\u062D\u0643\u064A\u0645 \u062A\u062C\u0627\u0631\u064A', '\u062A\u062D\u0643\u064A\u0645', 'ARB');\n\nINSERT OR IGNORE INTO clients (id, type, name, national_id, tax_id, commercial_reg, nationality, phone, phone2, email, address, city, occupation, company_rep, notes, status, assigned_lawyer_id) VALUES\n(1, 'company', '\u0645\u062C\u0645\u0648\u0639\u0629 \u0627\u0644\u0646\u064A\u0644 \u0627\u0644\u0642\u0627\u0628\u0636\u0629 \u0634.\u0645.\u0645', NULL, '204-123-456', '12345 \u0642\u0627\u0647\u0631\u0629', '\u0645\u0635\u0631\u064A', '0225791000', '01011112222', 'legal@nileholding.com', '\u0623\u0628\u0631\u0627\u062C \u0646\u0627\u064A\u0644 \u0633\u064A\u062A\u064A \u2014 \u0643\u0648\u0631\u0646\u064A\u0634 \u0627\u0644\u0646\u064A\u0644', '\u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0642\u0627\u0628\u0636\u0629 \u0627\u0633\u062A\u062B\u0645\u0627\u0631\u064A\u0629', '\u0627\u0644\u0645\u0647\u0646\u062F\u0633 \u062D\u0633\u0627\u0645 \u0641\u0631\u064A\u062F \u2014 \u0627\u0644\u0639\u0636\u0648 \u0627\u0644\u0645\u0646\u062A\u062F\u0628', '\u0639\u0645\u064A\u0644 \u0627\u0633\u062A\u0631\u0627\u062A\u064A\u062C\u064A \u0645\u0646\u0630 2014. \u0627\u062A\u0641\u0627\u0642\u064A\u0627\u062A \u0623\u062A\u0639\u0627\u0628 \u0633\u0646\u0648\u064A\u0629.', 'vip', 1),\n(2, 'company', '\u0634\u0631\u0643\u0629 \u0627\u0644\u0634\u0631\u0642 \u0644\u0644\u0625\u0646\u0634\u0627\u0621\u0627\u062A', NULL, '211-888-321', '77821 \u062C\u064A\u0632\u0629', '\u0645\u0635\u0631\u064A', '0233451000', '01022223333', 'contracts@sharq-con.com', '\u0627\u0644\u0645\u0647\u0646\u062F\u0633\u064A\u0646 \u2014 \u0627\u0644\u062C\u064A\u0632\u0629', '\u0627\u0644\u062C\u064A\u0632\u0629', '\u0645\u0642\u0627\u0648\u0644\u0627\u062A \u0639\u0627\u0645\u0629', '\u0627\u0644\u0645\u0647\u0646\u062F\u0633 \u0637\u0627\u0631\u0642 \u0628\u0647\u062C\u062A', '\u0646\u0632\u0627\u0639\u0627\u062A \u0645\u0642\u0627\u0648\u0644\u0627\u062A \u0648\u062A\u062D\u0643\u064A\u0645 FIDIC.', 'vip', 2),\n(3, 'company', '\u0628\u0646\u0643 \u0627\u0644\u062F\u0644\u062A\u0627 \u0627\u0644\u062A\u062C\u0627\u0631\u064A', NULL, '100-001-900', '90 \u0627\u0644\u0628\u0646\u0643 \u0627\u0644\u0645\u0631\u0643\u0632\u064A', '\u0645\u0635\u0631\u064A', '0223990000', NULL, 'litigation@delta-bank.com', '\u0634\u0627\u0631\u0639 \u0642\u0635\u0631 \u0627\u0644\u0646\u064A\u0644', '\u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0628\u0646\u0643', '\u0627\u0644\u0645\u0633\u062A\u0634\u0627\u0631 \u0627\u0644\u0642\u0627\u0646\u0648\u0646\u064A \u0627\u0644\u062F\u0627\u062E\u0644\u064A: \u0623. \u0644\u064A\u0644\u0649 \u062D\u0645\u062F\u064A', '\u062A\u062D\u0635\u064A\u0644 \u0645\u062D\u0627\u0641\u0638 \u0648\u0628\u0637\u0627\u0642\u0627\u062A \u0627\u0626\u062A\u0645\u0627\u0646 \u0648\u0642\u0636\u0627\u064A\u0627 \u0634\u064A\u0643\u0627\u062A.', 'active', 3),\n(4, 'individual', '\u0627\u0644\u0644\u0648\u0627\u0621 \u0645\u062D\u0645\u062F \u0635\u0644\u0627\u062D \u0627\u0644\u062F\u064A\u0646 \u0641\u0647\u0645\u064A', '26501011234567', NULL, NULL, '\u0645\u0635\u0631\u064A', '01033334444', '01223334444', 'msf.family@mail.com', '\u0627\u0644\u0632\u0645\u0627\u0644\u0643 \u2014 \u0634\u0627\u0631\u0639 \u0645\u062D\u0645\u062F \u0645\u0638\u0647\u0631', '\u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0636\u0627\u0628\u0637 \u0645\u062A\u0642\u0627\u0639\u062F', NULL, '\u0642\u0636\u0627\u064A\u0627 \u0623\u0633\u0631\u0629 \u0648\u0645\u064A\u0631\u0627\u062B \u0639\u0642\u0627\u0631\u064A \u0641\u064A \u0627\u0644\u0645\u0647\u0646\u062F\u0633\u064A\u0646.', 'vip', 4),\n(5, 'individual', '\u0627\u0644\u0633\u064A\u062F\u0629 \u0647\u0627\u0644\u0629 \u0645\u062D\u0645\u0648\u062F \u0627\u0644\u0634\u0631\u064A\u0641', '28403151234567', NULL, NULL, '\u0645\u0635\u0631\u064A', '01055556666', NULL, 'hala.sherif@mail.com', '\u0627\u0644\u0645\u0639\u0627\u062F\u064A \u2014 \u062F\u062C\u0644\u0629', '\u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0637\u0628\u064A\u0628\u0629', NULL, '\u0637\u0644\u0627\u0642 \u0644\u0644\u0636\u0631\u0631 \u0648\u0646\u0641\u0642\u0629 \u0648\u062D\u0636\u0627\u0646\u0629.', 'active', 4),\n(6, 'company', '\u0645\u0635\u0627\u0646\u0639 \u0627\u0644\u062F\u0644\u062A\u0627 \u0644\u0644\u063A\u0632\u0644', NULL, '188-440-210', '44120 \u0645\u062D\u0644\u0629', '\u0645\u0635\u0631\u064A', '0402221100', '01077778888', 'hr@delta-spin.com', '\u0627\u0644\u0645\u062D\u0644\u0629 \u0627\u0644\u0643\u0628\u0631\u0649', '\u0627\u0644\u063A\u0631\u0628\u064A\u0629', '\u0635\u0646\u0627\u0639\u0629 \u0646\u0633\u064A\u062C', '\u0623. \u0645\u062C\u062F\u064A \u0639\u0631\u0641\u0629 \u2014 \u0645\u062F\u064A\u0631 \u0627\u0644\u0645\u0648\u0627\u0631\u062F', '\u062F\u0639\u0627\u0648\u0649 \u0639\u0645\u0627\u0644\u064A\u0629 \u062C\u0645\u0627\u0639\u064A\u0629 \u0628\u0639\u062F \u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u0647\u064A\u0643\u0644\u0629.', 'active', 6),\n(7, 'individual', '\u0627\u0644\u0645\u0647\u0646\u062F\u0633 \u0648\u0627\u0626\u0644 \u0639\u0628\u062F\u0627\u0644\u0631\u062D\u0645\u0646', '27809181234567', NULL, NULL, '\u0645\u0635\u0631\u064A', '01088889999', NULL, 'wael.abdelrahman@mail.com', '\u0627\u0644\u062A\u062C\u0645\u0639 \u0627\u0644\u062E\u0627\u0645\u0633', '\u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0645\u0637\u0648\u0631 \u0639\u0642\u0627\u0631\u064A', NULL, '\u0646\u0632\u0627\u0639 \u062A\u0639\u0627\u0642\u062F \u0645\u0639 \u0645\u0642\u0627\u0648\u0644 \u0628\u0627\u0637\u0646 + \u0634\u064A\u0643\u0627\u062A.', 'active', 2),\n(8, 'company', '\u0627\u0644\u0647\u064A\u0626\u0629 \u0627\u0644\u0639\u0627\u0645\u0629 \u0644\u0644\u062A\u0646\u0645\u064A\u0629 \u0627\u0644\u0635\u0646\u0627\u0639\u064A\u0629', NULL, '\u062D\u0643\u0648\u0645\u064A', NULL, '\u0645\u0635\u0631\u064A', '0227940000', NULL, 'legal@ida.gov.eg', '\u0627\u0644\u062A\u062C\u0645\u0639 \u0627\u0644\u0623\u0648\u0644', '\u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0647\u064A\u0626\u0629 \u0639\u0627\u0645\u0629', '\u0627\u0644\u0645\u0633\u062A\u0634\u0627\u0631 \u0623\u062D\u0645\u062F \u0631\u0627\u0636\u064A', '\u0637\u0639\u0648\u0646 \u0625\u0644\u063A\u0627\u0621 \u0642\u0631\u0627\u0631\u0627\u062A \u062A\u062E\u0635\u064A\u0635 \u0623\u0631\u0627\u0636\u064D.', 'active', 5),\n(9, 'individual', '\u0627\u0644\u0623\u0633\u062A\u0627\u0630\u0629 \u062F\u064A\u0646\u0627 \u0643\u0645\u0627\u0644 \u064A\u0648\u0633\u0641', '29007021234567', NULL, NULL, '\u0645\u0635\u0631\u064A', '01112223344', NULL, 'dina.ky@mail.com', '\u0645\u0635\u0631 \u0627\u0644\u062C\u062F\u064A\u062F\u0629 \u2014 \u0634\u0627\u0631\u0639 \u0627\u0644\u062B\u0648\u0631\u0629', '\u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u0645\u062D\u0627\u0633\u0628\u0629', NULL, '\u0627\u0633\u062A\u0631\u062F\u0627\u062F \u062D\u064A\u0627\u0632\u0629 \u0634\u0642\u0629 + \u0637\u0631\u062F \u063A\u0627\u0635\u0628.', 'active', 2),\n(10, 'company', '\u0645\u062C\u0645\u0648\u0639\u0629 \u0633\u0641\u0646\u0643\u0633 \u0644\u0644\u0633\u064A\u0627\u062D\u0629', NULL, '199-330-010', '33010 \u0642\u0627\u0647\u0631\u0629', '\u0645\u0635\u0631\u064A', '0227350000', '01099990000', 'ceo@sphinx-tr.com', '\u0627\u0644\u0645\u0647\u0646\u062F\u0633\u064A\u0646 \u2014 \u0634\u0627\u0631\u0639 \u062C\u0627\u0645\u0639\u0629 \u0627\u0644\u062F\u0648\u0644', '\u0627\u0644\u062C\u064A\u0632\u0629', '\u0633\u064A\u0627\u062D\u0629 \u0648\u0637\u064A\u0631\u0627\u0646', '\u0627\u0644\u0633\u064A\u062F \u0639\u0645\u0631 \u0644\u0637\u0641\u064A', '\u062A\u062D\u0643\u064A\u0645 \u063A\u0631\u0641\u0629 \u0627\u0644\u0642\u0627\u0647\u0631\u0629 + \u0639\u0642\u062F \u0625\u062F\u0627\u0631\u0629 \u0641\u0646\u062F\u0642.', 'vip', 1),\n(11, 'individual', '\u0627\u0644\u0633\u064A\u062F \u062D\u0633\u064A\u0646 \u0639\u0628\u062F\u0627\u0644\u0639\u0627\u0644', '25512101234567', NULL, NULL, '\u0645\u0635\u0631\u064A', '01012131415', NULL, NULL, '\u0634\u0628\u0631\u0627 \u0627\u0644\u062E\u064A\u0645\u0629', '\u0627\u0644\u0642\u0644\u064A\u0648\u0628\u064A\u0629', '\u062A\u0627\u062C\u0631', NULL, '\u062C\u0646\u062D\u0629 \u0634\u064A\u0643 + \u0625\u0641\u0644\u0627\u0633 \u0641\u0631\u062F\u064A.', 'active', 3);\n\nINSERT OR IGNORE INTO cases (id, case_no, year, title, case_type_id, court_id, circuit, degree, status, priority, client_id, opposing_name, opposing_lawyer, lead_lawyer_id, subject, claim_value, currency, filing_date, next_action, outcome, closed_at, created_at, updated_at) VALUES\n(1, '1842', 2025, '\u0645\u062C\u0645\u0648\u0639\u0629 \u0627\u0644\u0646\u064A\u0644 / \u0634\u0631\u0643\u0629 \u0623\u0637\u0644\u0633 \u0644\u0644\u062A\u062C\u0627\u0631\u0629 \u2014 \u0641\u0633\u062E \u0639\u0642\u062F \u062A\u0648\u0631\u064A\u062F', 3, 11, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 4 \u0627\u0642\u062A\u0635\u0627\u062F\u064A', '\u0627\u0628\u062A\u062F\u0627\u0626\u064A', '\u0645\u062A\u062F\u0627\u0648\u0644\u0629', '\u0639\u0627\u0644\u064A\u0629', 1, '\u0634\u0631\u0643\u0629 \u0623\u0637\u0644\u0633 \u0644\u0644\u062A\u062C\u0627\u0631\u0629 \u0627\u0644\u062F\u0648\u0644\u064A\u0629', '\u0623. \u0645\u062D\u0645\u0648\u062F \u0635\u0628\u0631\u064A', 2, '\u0641\u0633\u062E \u0639\u0642\u062F \u062A\u0648\u0631\u064A\u062F \u0645\u0639\u062F\u0627\u062A \u0637\u0627\u0642\u0629 \u0628\u0642\u064A\u0645\u0629 48 \u0645\u0644\u064A\u0648\u0646 \u062C\u0646\u064A\u0647 \u0648\u0627\u0644\u062A\u0639\u0648\u064A\u0636 \u0639\u0646 \u0627\u0644\u062A\u0623\u062E\u064A\u0631.', 48000000, 'EGP', '2025-03-12', '\u0625\u064A\u062F\u0627\u0639 \u0645\u0630\u0643\u0631\u0629 \u062A\u0639\u0642\u064A\u0628 \u0642\u0628\u0644 \u062C\u0644\u0633\u0629 21 \u0633\u0628\u062A\u0645\u0628\u0631', NULL, NULL, '2025-03-12 10:00:00', '2026-09-16 18:00:00'),\n(2, '771', 2024, '\u0627\u0644\u0634\u0631\u0642 \u0644\u0644\u0625\u0646\u0634\u0627\u0621\u0627\u062A / \u0647\u064A\u0626\u0629 \u0627\u0644\u0645\u062C\u062A\u0645\u0639\u0627\u062A \u2014 \u0645\u0633\u062A\u062D\u0642\u0627\u062A FIDIC', 16, NULL, '\u062A\u062D\u0643\u064A\u0645 \u063A\u0631\u0641\u0629 \u0627\u0644\u0642\u0627\u0647\u0631\u0629', '\u062A\u062D\u0643\u064A\u0645', '\u0645\u062A\u062F\u0627\u0648\u0644\u0629', '\u0639\u0627\u062C\u0644\u0629', 2, '\u0647\u064A\u0626\u0629 \u0627\u0644\u0645\u062C\u062A\u0645\u0639\u0627\u062A \u0627\u0644\u0639\u0645\u0631\u0627\u0646\u064A\u0629', '\u0647\u064A\u0626\u0629 \u0642\u0636\u0627\u064A\u0627 \u0627\u0644\u062F\u0648\u0644\u0629', 1, '\u062A\u062D\u0643\u064A\u0645 \u062A\u062C\u0627\u0631\u064A \u0639\u0646 \u0645\u0633\u062A\u062D\u0642\u0627\u062A \u0645\u0634\u0631\u0648\u0639 \u0627\u0644\u0639\u0627\u0635\u0645\u0629 \u0627\u0644\u0625\u062F\u0627\u0631\u064A\u0629 \u2014 \u0639\u0642\u062F \u0641\u064A\u062F\u064A\u0643 \u0623\u062D\u0645\u0631.', 126500000, 'EGP', '2024-11-02', '\u062C\u0644\u0633\u0629 \u0645\u0631\u0627\u0641\u0639\u0629 \u062E\u062A\u0627\u0645\u064A\u0629 24 \u0633\u0628\u062A\u0645\u0628\u0631', NULL, NULL, '2024-11-02 09:00:00', '2026-09-15 12:00:00'),\n(3, '4521', 2026, '\u0628\u0646\u0643 \u0627\u0644\u062F\u0644\u062A\u0627 / \u0627\u0644\u0645\u062A\u0647\u0645 \u0643\u0645\u0627\u0644 \u0639\u0628\u062F\u0627\u0644\u0633\u062A\u0627\u0631 \u2014 \u0634\u064A\u0643 \u0628\u062F\u0648\u0646 \u0631\u0635\u064A\u062F', 14, 4, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 7 \u062C\u0646\u062D', '\u0627\u0628\u062A\u062F\u0627\u0626\u064A', '\u0645\u062A\u062F\u0627\u0648\u0644\u0629', '\u0639\u0627\u062F\u064A\u0629', 3, '\u0643\u0645\u0627\u0644 \u0639\u0628\u062F\u0627\u0644\u0633\u062A\u0627\u0631 \u0625\u0628\u0631\u0627\u0647\u064A\u0645', '\u0623. \u062D\u0633\u0627\u0645 \u0627\u0644\u062F\u064A\u0646 \u0639\u0644\u064A', 3, '\u062C\u0646\u062D\u0629 \u0634\u064A\u0643 \u0628\u062F\u0648\u0646 \u0631\u0635\u064A\u062F \u0628\u0645\u0628\u0644\u063A 2.4 \u0645\u0644\u064A\u0648\u0646 \u062C\u0646\u064A\u0647.', 2400000, 'EGP', '2026-01-18', '\u062D\u0636\u0648\u0631 \u0627\u0644\u062C\u0644\u0633\u0629 \u0648\u062A\u0642\u062F\u064A\u0645 \u0623\u0635\u0644 \u0627\u0644\u0634\u064A\u0643', NULL, NULL, '2026-01-18 11:00:00', '2026-09-10 09:00:00'),\n(4, '908', 2025, '\u0627\u0644\u0646\u064A\u0627\u0628\u0629 \u0627\u0644\u0639\u0627\u0645\u0629 / \u0627\u0644\u0645\u062A\u0647\u0645\u064A\u0646 \u0641\u064A \u0642\u0636\u064A\u0629 \u0623\u0645\u0648\u0627\u0644 \u0639\u0627\u0645\u0629', 13, 3, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 3 \u062C\u0646\u0627\u064A\u0627\u062A \u0623\u0645\u0648\u0627\u0644 \u0639\u0627\u0645\u0629', '\u062C\u0646\u0627\u064A\u0627\u062A', '\u0645\u062D\u062C\u0648\u0632\u0629 \u0644\u0644\u062D\u0643\u0645', '\u0639\u0627\u062C\u0644\u0629', 1, '\u0627\u0644\u0646\u064A\u0627\u0628\u0629 \u0627\u0644\u0639\u0627\u0645\u0629', NULL, 3, '\u0627\u0644\u062F\u0641\u0627\u0639 \u0639\u0646 \u0639\u0636\u0648 \u0645\u062C\u0644\u0633 \u0625\u062F\u0627\u0631\u0629 \u0645\u062C\u0645\u0648\u0639\u0629 \u0627\u0644\u0646\u064A\u0644 \u0641\u064A \u0627\u062A\u0647\u0627\u0645 \u062A\u0631\u0628\u0651\u062D.', 0, 'EGP', '2025-06-04', '\u0627\u0646\u062A\u0638\u0627\u0631 \u0627\u0644\u0646\u0637\u0642 \u0628\u0627\u0644\u062D\u0643\u0645 28 \u0633\u0628\u062A\u0645\u0628\u0631', NULL, NULL, '2025-06-04 08:30:00', '2026-09-01 16:00:00'),\n(5, '2104', 2026, '\u0647\u0627\u0644\u0629 \u0645\u062D\u0645\u0648\u062F \u0627\u0644\u0634\u0631\u064A\u0641 / \u0637\u0627\u0631\u0642 \u0623\u0646\u0648\u0631 \u2014 \u0637\u0644\u0627\u0642 \u0644\u0644\u0636\u0631\u0631', 8, 5, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 2 \u0623\u0633\u0631\u0629', '\u0627\u0628\u062A\u062F\u0627\u0626\u064A', '\u0645\u062A\u062F\u0627\u0648\u0644\u0629', '\u0639\u0627\u0644\u064A\u0629', 5, '\u0637\u0627\u0631\u0642 \u0623\u0646\u0648\u0631 \u0645\u062D\u0645\u062F', '\u0623. \u0633\u0646\u0627\u0621 \u0639\u0628\u062F\u0627\u0644\u062D\u0645\u064A\u062F', 4, '\u0637\u0644\u0627\u0642 \u0644\u0644\u0636\u0631\u0631 \u0648\u0646\u0641\u0642\u0629 \u0632\u0648\u062C\u064A\u0629 \u0648\u0645\u0633\u0643\u0646 \u062D\u0636\u0627\u0646\u0629 \u0644\u0637\u0641\u0644\u062A\u064A\u0646.', 0, 'EGP', '2026-02-11', '\u0645\u0646\u0627\u0642\u0634\u0629 \u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u0623\u062E\u0635\u0627\u0626\u064A \u0627\u0644\u0627\u062C\u062A\u0645\u0627\u0639\u064A', NULL, NULL, '2026-02-11 10:00:00', '2026-09-14 11:00:00'),\n(6, '331', 2025, '\u0627\u0644\u0644\u0648\u0627\u0621 \u0641\u0647\u0645\u064A \u0648\u0648\u0631\u062B\u0629 \u2014 \u0642\u0633\u0645\u0629 \u0639\u0642\u0627\u0631\u064A\u0629', 1, 1, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 12 \u0645\u062F\u0646\u064A \u0643\u0644\u064A', '\u0627\u0628\u062A\u062F\u0627\u0626\u064A', '\u0645\u062A\u062F\u0627\u0648\u0644\u0629', '\u0639\u0627\u062F\u064A\u0629', 4, '\u0648\u0631\u062B\u0629 \u0627\u0644\u0645\u0631\u062D\u0648\u0645\u0629 \u0632\u064A\u0646\u0628 \u0641\u0647\u0645\u064A', '\u0623. \u0639\u0627\u062F\u0644 \u0645\u0646\u0635\u0648\u0631', 4, '\u0642\u0633\u0645\u0629 \u0639\u0642\u0627\u0631 \u0627\u0644\u0645\u0647\u0646\u062F\u0633\u064A\u0646 \u0648\u0625\u0646\u0647\u0627\u0621 \u0627\u0644\u0634\u064A\u0648\u0639 \u0645\u0639 \u062A\u0639\u0648\u064A\u0636 \u0639\u0646 \u0627\u0644\u0631\u064A\u0639.', 18500000, 'EGP', '2025-09-01', '\u0646\u062F\u0628 \u062E\u0628\u064A\u0631 \u0645\u0633\u0627\u062D\u0629', NULL, NULL, '2025-09-01 12:00:00', '2026-08-20 10:00:00'),\n(7, '1190', 2026, '\u0639\u0645\u0627\u0644 \u0645\u0635\u0627\u0646\u0639 \u0627\u0644\u062F\u0644\u062A\u0627 / \u0627\u0644\u0634\u0631\u0643\u0629 \u2014 \u0641\u0635\u0644 \u062A\u0639\u0633\u0641\u064A \u062C\u0645\u0627\u0639\u064A', 12, 10, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 1 \u0639\u0645\u0627\u0644', '\u0627\u0628\u062A\u062F\u0627\u0626\u064A', '\u0645\u062A\u062F\u0627\u0648\u0644\u0629', '\u0639\u0627\u0644\u064A\u0629', 6, '42 \u0639\u0627\u0645\u0644\u0627\u064B \u0645\u0645\u062B\u0644\u064A\u0646 \u0628\u0646\u0642\u0627\u0628\u0629 \u0627\u0644\u063A\u0632\u0644', '\u0623. \u0641\u062A\u062D\u064A \u0627\u0644\u062C\u0645\u0644', 6, '\u062F\u0641\u0627\u0639 \u0627\u0644\u0634\u0631\u0643\u0629 \u0641\u064A \u062F\u0639\u0627\u0648\u0649 \u0641\u0635\u0644 \u0628\u0639\u062F \u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u0647\u064A\u0643\u0644\u0629.', 0, 'EGP', '2026-04-22', '\u062A\u0642\u062F\u064A\u0645 \u0643\u0634\u0648\u0641 \u0627\u0644\u062A\u0623\u0645\u064A\u0646\u0627\u062A \u0648\u0647\u064A\u0643\u0644 \u0627\u0644\u0631\u0648\u0627\u062A\u0628', NULL, NULL, '2026-04-22 09:15:00', '2026-09-12 14:00:00'),\n(8, '67', 2025, '\u0648\u0627\u0626\u0644 \u0639\u0628\u062F\u0627\u0644\u0631\u062D\u0645\u0646 / \u0634\u0631\u0643\u0629 \u0628\u0646\u0627\u0629 \u0627\u0644\u0623\u0647\u0631\u0627\u0645 \u2014 \u0641\u0633\u062E \u0645\u0642\u0627\u0648\u0644\u0629', 3, 11, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 2 \u0627\u0642\u062A\u0635\u0627\u062F\u064A', '\u0627\u0628\u062A\u062F\u0627\u0626\u064A', '\u0645\u062A\u062F\u0627\u0648\u0644\u0629', '\u0639\u0627\u0644\u064A\u0629', 7, '\u0634\u0631\u0643\u0629 \u0628\u0646\u0627\u0629 \u0627\u0644\u0623\u0647\u0631\u0627\u0645 \u0644\u0644\u0645\u0642\u0627\u0648\u0644\u0627\u062A', '\u0623. \u0634\u0631\u064A\u0641 \u0639\u0632\u062A', 2, '\u0641\u0633\u062E \u0639\u0642\u062F \u0645\u0642\u0627\u0648\u0644\u0629 \u0641\u064A\u0644\u0627 \u0648\u0627\u0644\u062A\u062C\u0645\u0639 \u0648\u0627\u0644\u062A\u0639\u0648\u064A\u0636 \u0639\u0646 \u0627\u0644\u0639\u064A\u0648\u0628.', 9200000, 'EGP', '2025-12-07', '\u062A\u0639\u0642\u064A\u0628 \u0639\u0644\u0649 \u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u062E\u0628\u064A\u0631 \u0627\u0644\u0647\u0646\u062F\u0633\u064A', NULL, NULL, '2025-12-07 13:00:00', '2026-09-08 17:00:00'),\n(9, '445', 2024, '\u0633\u0641\u0646\u0643\u0633 \u0644\u0644\u0633\u064A\u0627\u062D\u0629 / \u0648\u0632\u0627\u0631\u0629 \u0627\u0644\u0633\u064A\u0627\u062D\u0629 \u2014 \u0625\u0644\u063A\u0627\u0621 \u0642\u0631\u0627\u0631', 10, 8, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 7 \u0642\u0636\u0627\u0621 \u0625\u062F\u0627\u0631\u064A', '\u0625\u062F\u0627\u0631\u064A', '\u0645\u062A\u062F\u0627\u0648\u0644\u0629', '\u0639\u0627\u062F\u064A\u0629', 10, '\u0648\u0632\u064A\u0631 \u0627\u0644\u0633\u064A\u0627\u062D\u0629 \u0628\u0635\u0641\u062A\u0647', '\u0647\u064A\u0626\u0629 \u0642\u0636\u0627\u064A\u0627 \u0627\u0644\u062F\u0648\u0644\u0629', 5, '\u0625\u0644\u063A\u0627\u0621 \u0642\u0631\u0627\u0631 \u0633\u062D\u0628 \u062A\u0631\u062E\u064A\u0635 \u062A\u0634\u063A\u064A\u0644 \u0641\u0646\u062F\u0642 \u0628\u0627\u0644\u0633\u0627\u062D\u0644 \u0627\u0644\u0634\u0645\u0627\u0644\u064A.', 0, 'EGP', '2024-08-19', '\u062D\u062C\u0632 \u0627\u0644\u062F\u0639\u0648\u0649 \u0644\u0644\u062D\u0643\u0645', NULL, NULL, '2024-08-19 10:00:00', '2026-07-30 09:00:00'),\n(10, '8022', 2023, '\u062F\u064A\u0646\u0627 \u0643\u0645\u0627\u0644 / \u0627\u0644\u062D\u0627\u0626\u0632 \u0628\u062F\u0648\u0646 \u0633\u0646\u062F \u2014 \u0637\u0631\u062F \u0644\u0644\u063A\u0635\u0628', 1, 2, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 5 \u0645\u062F\u0646\u064A \u0643\u0644\u064A', '\u0627\u0628\u062A\u062F\u0627\u0626\u064A', '\u0645\u0646\u062A\u0647\u064A\u0629', '\u0639\u0627\u062F\u064A\u0629', 9, '\u0645\u062D\u0645\u0648\u062F \u0627\u0644\u0633\u064A\u062F \u0639\u0637\u0627', NULL, 2, '\u0637\u0631\u062F \u0644\u0644\u063A\u0635\u0628 \u0648\u0627\u0633\u062A\u0631\u062F\u0627\u062F \u062D\u064A\u0627\u0632\u0629 \u0634\u0642\u0629 \u0645\u0635\u0631 \u0627\u0644\u062C\u062F\u064A\u062F\u0629.', 0, 'EGP', '2023-11-14', NULL, '\u062D\u0643\u0645 \u0628\u0627\u0644\u0637\u0631\u062F \u0648\u0627\u0633\u062A\u0644\u0627\u0645 \u0628\u062A\u0627\u0631\u064A\u062E 2026-05-12', '2026-05-12', '2023-11-14 11:00:00', '2026-05-12 15:00:00'),\n(11, '155', 2026, '\u062D\u0633\u064A\u0646 \u0639\u0628\u062F\u0627\u0644\u0639\u0627\u0644 \u2014 \u0645\u0639\u0627\u0631\u0636\u0629 \u0641\u064A \u062D\u0643\u0645 \u0634\u064A\u0643', 14, 4, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 3 \u062C\u0646\u062D', '\u0627\u0628\u062A\u062F\u0627\u0626\u064A', '\u0645\u062A\u062F\u0627\u0648\u0644\u0629', '\u0645\u0646\u062E\u0641\u0636\u0629', 11, '\u0628\u0646\u0643 \u0627\u0644\u062F\u0644\u062A\u0627 \u0627\u0644\u062A\u062C\u0627\u0631\u064A', '\u0625\u062F\u0627\u0631\u0629 \u0642\u0636\u0627\u064A\u0627 \u0627\u0644\u0628\u0646\u0643', 3, '\u0645\u0639\u0627\u0631\u0636\u0629 \u0641\u064A \u062D\u0643\u0645 \u063A\u064A\u0627\u0628\u064A \u0628\u0627\u0644\u062D\u0628\u0633 \u0641\u064A \u062C\u0646\u062D\u0629 \u0634\u064A\u0643.', 380000, 'EGP', '2026-06-03', '\u062D\u0636\u0648\u0631 \u0627\u0644\u0645\u0639\u0627\u0631\u0636\u0629 \u0648\u062A\u0642\u062F\u064A\u0645 \u0623\u0633\u0628\u0627\u0628', NULL, NULL, '2026-06-03 09:00:00', '2026-09-05 10:00:00'),\n(12, '29', 2026, '\u0645\u062C\u0645\u0648\u0639\u0629 \u0627\u0644\u0646\u064A\u0644 \u2014 \u0627\u0633\u062A\u0626\u0646\u0627\u0641 \u062D\u0643\u0645 \u062A\u0639\u0648\u064A\u0636', 3, 6, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 8 \u062A\u062C\u0627\u0631\u064A', '\u0627\u0633\u062A\u0626\u0646\u0627\u0641', '\u0645\u062A\u062F\u0627\u0648\u0644\u0629', '\u0639\u0627\u0644\u064A\u0629', 1, '\u0634\u0631\u0643\u0629 \u0627\u0644\u0628\u062D\u0631 \u0627\u0644\u0645\u062A\u0648\u0633\u0637 \u0644\u0644\u0634\u062D\u0646', '\u0623. \u0646\u0628\u064A\u0644 \u0642\u0627\u0633\u0645', 1, '\u0627\u0633\u062A\u0626\u0646\u0627\u0641 \u062D\u0643\u0645 \u0625\u0644\u0632\u0627\u0645 \u0627\u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u0628\u062A\u0639\u0648\u064A\u0636 11 \u0645\u0644\u064A\u0648\u0646.', 11000000, 'EGP', '2026-03-28', '\u0645\u0631\u0627\u0641\u0639\u0629 \u0627\u0633\u062A\u0626\u0646\u0627\u0641\u064A\u0629', NULL, NULL, '2026-03-28 12:00:00', '2026-09-11 16:00:00'),\n(13, '512', 2025, '\u0627\u0644\u0647\u064A\u0626\u0629 \u0627\u0644\u0635\u0646\u0627\u0639\u064A\u0629 / \u0645\u0633\u062A\u062B\u0645\u0631 \u2014 \u062A\u062E\u0635\u064A\u0635 \u0623\u0631\u0636', 10, 8, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 4 \u0642\u0636\u0627\u0621 \u0625\u062F\u0627\u0631\u064A', '\u0625\u062F\u0627\u0631\u064A', '\u0645\u0648\u0642\u0648\u0641\u0629', '\u0639\u0627\u062F\u064A\u0629', 8, '\u0634\u0631\u0643\u0629 \u0627\u0644\u0631\u0645\u0627\u0644 \u0627\u0644\u0630\u0647\u0628\u064A\u0629', '\u0623. \u0643\u0645\u0627\u0644 \u062F\u0631\u0648\u064A\u0634', 5, '\u0627\u0644\u062F\u0641\u0627\u0639 \u0639\u0646 \u0642\u0631\u0627\u0631 \u062A\u062E\u0635\u064A\u0635 \u0623\u0631\u0636 \u0628\u0627\u0644\u0639\u0627\u0634\u0631 \u0645\u0646 \u0631\u0645\u0636\u0627\u0646.', 0, 'EGP', '2025-01-09', '\u0648\u0642\u0641 \u062A\u0639\u0644\u064A\u0642\u064A\u0627\u064B \u0644\u062D\u064A\u0646 \u0627\u0644\u0641\u0635\u0644 \u0641\u064A \u062F\u0639\u0648\u0649 \u0645\u0631\u062A\u0628\u0637\u0629', NULL, NULL, '2025-01-09 10:00:00', '2026-04-01 10:00:00');\n\nINSERT OR IGNORE INTO case_lawyers (case_id, user_id, role) VALUES\n(1, 2, '\u0631\u0626\u064A\u0633'), (1, 7, '\u0645\u0633\u0627\u0639\u062F'), (1, 1, '\u0625\u0634\u0631\u0627\u0641'),\n(2, 1, '\u0631\u0626\u064A\u0633'), (2, 2, '\u0645\u0631\u0627\u0641\u0639\u0629'), (2, 5, '\u0628\u062D\u0648\u062B'),\n(3, 3, '\u0631\u0626\u064A\u0633'), (3, 7, '\u0645\u0633\u0627\u0639\u062F'),\n(4, 3, '\u0631\u0626\u064A\u0633'), (4, 1, '\u0625\u0634\u0631\u0627\u0641'), (4, 7, '\u0623\u0631\u0634\u064A\u0641'),\n(5, 4, '\u0631\u0626\u064A\u0633'), (5, 8, '\u0645\u062A\u0627\u0628\u0639\u0629'),\n(6, 4, '\u0631\u0626\u064A\u0633'), (6, 2, '\u0627\u0633\u062A\u0634\u0627\u0631\u0629 \u0639\u0642\u0627\u0631\u064A\u0629'),\n(7, 6, '\u0631\u0626\u064A\u0633'), (7, 7, '\u0645\u0633\u0627\u0639\u062F'),\n(8, 2, '\u0631\u0626\u064A\u0633'), (8, 7, '\u0645\u0633\u0627\u0639\u062F'),\n(9, 5, '\u0631\u0626\u064A\u0633'), (9, 1, '\u0625\u0634\u0631\u0627\u0641'),\n(10, 2, '\u0631\u0626\u064A\u0633'),\n(11, 3, '\u0631\u0626\u064A\u0633'),\n(12, 1, '\u0631\u0626\u064A\u0633'), (12, 2, '\u0645\u0631\u0627\u0641\u0639\u0629'),\n(13, 5, '\u0631\u0626\u064A\u0633');\n\nINSERT OR IGNORE INTO hearings (id, case_id, hearing_date, hearing_time, court_id, circuit, type, purpose, result, next_date, lawyer_id, status, notes) VALUES\n(1, 1, '2026-09-21', '09:30', 11, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 4 \u0627\u0642\u062A\u0635\u0627\u062F\u064A', '\u0645\u0631\u0627\u0641\u0639\u0629', '\u062A\u0639\u0642\u064A\u0628 \u0639\u0644\u0649 \u0645\u0630\u0643\u0631\u0629 \u0627\u0644\u062E\u0635\u0645 \u0648\u062A\u0642\u062F\u064A\u0645 \u0623\u0635\u0648\u0644 \u0627\u0644\u0639\u0642\u0648\u062F', NULL, NULL, 2, '\u0642\u0627\u062F\u0645\u0629', '\u0625\u062D\u0636\u0627\u0631 \u0623\u0635\u0644 \u0639\u0642\u062F \u0627\u0644\u062A\u0648\u0631\u064A\u062F + \u0645\u0631\u0627\u0633\u0644\u0627\u062A \u0627\u0644\u062A\u0623\u062E\u064A\u0631'),\n(2, 2, '2026-09-24', '11:00', NULL, '\u063A\u0631\u0641\u0629 \u0627\u0644\u0642\u0627\u0647\u0631\u0629 \u0644\u0644\u062A\u062D\u0643\u064A\u0645', '\u0645\u0631\u0627\u0641\u0639\u0629', '\u0645\u0631\u0627\u0641\u0639\u0629 \u062E\u062A\u0627\u0645\u064A\u0629 \u0623\u0645\u0627\u0645 \u0647\u064A\u0626\u0629 \u0627\u0644\u062A\u062D\u0643\u064A\u0645', NULL, NULL, 1, '\u0642\u0627\u062F\u0645\u0629', '\u062B\u0644\u0627\u062B \u0646\u0633\u062E \u0645\u0646 \u0627\u0644\u0645\u0630\u0643\u0631\u0629 \u0627\u0644\u062E\u062A\u0627\u0645\u064A\u0629 + \u062D\u0627\u0641\u0638\u0629 \u0645\u0633\u062A\u0646\u062F\u0627\u062A'),\n(3, 3, '2026-09-17', '10:00', 4, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 7 \u062C\u0646\u062D', '\u062A\u062D\u0642\u064A\u0642', '\u062A\u0642\u062F\u064A\u0645 \u0623\u0635\u0644 \u0627\u0644\u0634\u064A\u0643 \u0648\u0633\u0645\u0627\u0639 \u0627\u0644\u0634\u0647\u0648\u062F', NULL, NULL, 3, '\u0642\u0627\u062F\u0645\u0629', '\u0623\u0635\u0644 \u0627\u0644\u0634\u064A\u0643 \u0641\u064A \u062E\u0632\u064A\u0646\u0629 \u0627\u0644\u0645\u0643\u062A\u0628 \u2014 \u062A\u0633\u0644\u0645\u0647 \u0641\u0627\u0637\u0645\u0629 \u0635\u0628\u0627\u062D\u0627\u064B'),\n(4, 4, '2026-09-28', '09:00', 3, '\u062C\u0646\u0627\u064A\u0627\u062A \u0623\u0645\u0648\u0627\u0644 \u0639\u0627\u0645\u0629', '\u062D\u0643\u0645', '\u0627\u0644\u0646\u0637\u0642 \u0628\u0627\u0644\u062D\u0643\u0645', NULL, NULL, 3, '\u0642\u0627\u062F\u0645\u0629', '\u062D\u0636\u0648\u0631 \u0627\u0644\u0645\u0633\u062A\u0634\u0627\u0631 \u0627\u0644\u0634\u0631\u064A\u0641 \u0634\u062E\u0635\u064A\u0627\u064B'),\n(5, 5, '2026-09-18', '11:30', 5, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 2 \u0623\u0633\u0631\u0629', '\u062A\u062D\u0642\u064A\u0642', '\u0645\u0646\u0627\u0642\u0634\u0629 \u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u0623\u062E\u0635\u0627\u0626\u064A \u0627\u0644\u0627\u062C\u062A\u0645\u0627\u0639\u064A', NULL, NULL, 4, '\u0642\u0627\u062F\u0645\u0629', '\u0625\u062D\u0636\u0627\u0631 \u0627\u0644\u0645\u0648\u0643\u0644\u0629 \u0648\u0627\u0644\u0637\u0641\u0644\u062A\u064A\u0646 \u0625\u0646 \u0644\u0632\u0645'),\n(6, 7, '2026-09-22', '09:00', 10, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 1 \u0639\u0645\u0627\u0644', '\u0645\u0631\u0627\u0641\u0639\u0629', '\u062A\u0642\u062F\u064A\u0645 \u0643\u0634\u0648\u0641 \u0627\u0644\u062A\u0623\u0645\u064A\u0646\u0627\u062A \u0648\u0647\u064A\u0643\u0644 \u0627\u0644\u0623\u062C\u0648\u0631', NULL, NULL, 6, '\u0642\u0627\u062F\u0645\u0629', NULL),\n(7, 8, '2026-09-20', '10:15', 11, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 2 \u0627\u0642\u062A\u0635\u0627\u062F\u064A', '\u062E\u0628\u0631\u0629', '\u062A\u0639\u0642\u064A\u0628 \u0639\u0644\u0649 \u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u062E\u0628\u064A\u0631 \u0627\u0644\u0647\u0646\u062F\u0633\u064A', NULL, NULL, 2, '\u0642\u0627\u062F\u0645\u0629', '\u0627\u0644\u062A\u0646\u0633\u064A\u0642 \u0645\u0639 \u0627\u0644\u0645\u0647\u0646\u062F\u0633 \u0627\u0644\u0627\u0633\u062A\u0634\u0627\u0631\u064A \u0643\u0645\u0627\u0644'),\n(8, 12, '2026-09-23', '09:45', 6, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 8 \u062A\u062C\u0627\u0631\u064A', '\u0645\u0631\u0627\u0641\u0639\u0629', '\u0645\u0631\u0627\u0641\u0639\u0629 \u0627\u0633\u062A\u0626\u0646\u0627\u0641\u064A\u0629', NULL, NULL, 1, '\u0642\u0627\u062F\u0645\u0629', NULL),\n(9, 11, '2026-09-17', '12:00', 4, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 3 \u062C\u0646\u062D', '\u0645\u0631\u0627\u0641\u0639\u0629', '\u0645\u0639\u0627\u0631\u0636\u0629 \u0641\u064A \u062D\u0643\u0645 \u063A\u064A\u0627\u0628\u064A', NULL, NULL, 3, '\u0642\u0627\u062F\u0645\u0629', '\u0625\u0639\u0644\u0627\u0646 \u0627\u0644\u062E\u0635\u0648\u0645 \u062A\u0645 \u0641\u064A 3 \u0633\u0628\u062A\u0645\u0628\u0631'),\n(10, 6, '2026-10-05', '09:00', 1, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 12 \u0645\u062F\u0646\u064A \u0643\u0644\u064A', '\u062E\u0628\u0631\u0629', '\u0646\u062F\u0628 \u062E\u0628\u064A\u0631 \u0645\u0633\u0627\u062D\u0629', NULL, NULL, 4, '\u0642\u0627\u062F\u0645\u0629', NULL),\n(11, 9, '2026-08-12', '10:00', 8, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 7 \u0642\u0636\u0627\u0621 \u0625\u062F\u0627\u0631\u064A', '\u062D\u0643\u0645', '\u062D\u062C\u0632 \u0644\u0644\u062D\u0643\u0645', '\u062D\u062C\u0632\u062A \u0644\u0644\u062D\u0643\u0645 \u0644\u062C\u0644\u0633\u0629 12 \u0623\u0643\u062A\u0648\u0628\u0631', '2026-10-12', 5, '\u062A\u0645\u062A', NULL),\n(12, 1, '2026-08-24', '09:30', 11, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 4 \u0627\u0642\u062A\u0635\u0627\u062F\u064A', '\u0645\u0631\u0627\u0641\u0639\u0629', '\u062A\u0642\u062F\u064A\u0645 \u062D\u0627\u0641\u0638\u0629 \u0645\u0633\u062A\u0646\u062F\u0627\u062A', '\u062A\u0623\u062C\u064A\u0644 \u0644\u0644\u0625\u0637\u0644\u0627\u0639', '2026-09-21', 2, '\u062A\u0623\u062C\u064A\u0644', NULL),\n(13, 5, '2026-08-06', '11:00', 5, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 2 \u0623\u0633\u0631\u0629', '\u062A\u062D\u0642\u064A\u0642', '\u0634\u0647\u0627\u062F\u0629 \u0627\u0644\u0634\u0647\u0648\u062F', '\u0633\u064F\u0645\u0639 \u0634\u0627\u0647\u062F\u0627\u0646 \u0644\u0644\u0645\u0648\u0643\u0644\u0629', '2026-09-18', 4, '\u062A\u0645\u062A', NULL),\n(14, 3, '2026-07-15', '10:00', 4, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 7 \u062C\u0646\u062D', '\u0645\u0631\u0627\u0641\u0639\u0629', '\u0623\u0648\u0644 \u062C\u0644\u0633\u0629', '\u062A\u0623\u062C\u064A\u0644 \u0644\u0625\u0639\u0644\u0627\u0646 \u0627\u0644\u0645\u062A\u0647\u0645', '2026-09-17', 3, '\u062A\u0623\u062C\u064A\u0644', NULL),\n(15, 7, '2026-08-18', '09:00', 10, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 1 \u0639\u0645\u0627\u0644', '\u0645\u0631\u0627\u0641\u0639\u0629', '\u0631\u062F \u0639\u0644\u0649 \u0635\u062D\u064A\u0641\u0629 \u0627\u0644\u062F\u0639\u0648\u0649', '\u062A\u0623\u062C\u064A\u0644 \u0644\u062A\u0642\u062F\u064A\u0645 \u0645\u0633\u062A\u0646\u062F\u0627\u062A \u0627\u0644\u0634\u0631\u0643\u0629', '2026-09-22', 6, '\u062A\u0623\u062C\u064A\u0644', NULL),\n(16, 2, '2026-06-30', '11:00', NULL, '\u063A\u0631\u0641\u0629 \u0627\u0644\u0642\u0627\u0647\u0631\u0629 \u0644\u0644\u062A\u062D\u0643\u064A\u0645', '\u062E\u0628\u0631\u0629', '\u0645\u0646\u0627\u0642\u0634\u0629 \u0627\u0644\u062E\u0628\u064A\u0631 \u0627\u0644\u0641\u0646\u064A', '\u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u062C\u0632\u0626\u064A\u0627\u064B', '2026-09-24', 1, '\u062A\u0645\u062A', NULL),\n(17, 10, '2026-05-12', '09:30', 2, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 5 \u0645\u062F\u0646\u064A \u0643\u0644\u064A', '\u062D\u0643\u0645', '\u0646\u0637\u0642 \u0628\u0627\u0644\u062D\u0643\u0645', '\u062D\u0643\u0645 \u0628\u0627\u0644\u0637\u0631\u062F \u0644\u0644\u063A\u0635\u0628', NULL, 2, '\u062A\u0645\u062A', '\u062A\u0645 \u0627\u0644\u062A\u0646\u0641\u064A\u0630 \u0641\u064A \u064A\u0648\u0646\u064A\u0648 2026'),\n(18, 12, '2026-07-21', '09:45', 6, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 8 \u062A\u062C\u0627\u0631\u064A', '\u0645\u0631\u0627\u0641\u0639\u0629', '\u062A\u0628\u0627\u062F\u0644 \u0627\u0644\u0645\u0630\u0643\u0631\u0627\u062A', '\u062A\u0623\u062C\u064A\u0644 \u0644\u0644\u0645\u0631\u0627\u0641\u0639\u0629', '2026-09-23', 1, '\u062A\u0623\u062C\u064A\u0644', NULL),\n(19, 4, '2026-07-08', '09:00', 3, '\u062C\u0646\u0627\u064A\u0627\u062A \u0623\u0645\u0648\u0627\u0644 \u0639\u0627\u0645\u0629', '\u0645\u0631\u0627\u0641\u0639\u0629', '\u0645\u0631\u0627\u0641\u0639\u0629 \u0627\u0644\u062F\u0641\u0627\u0639 \u0627\u0644\u062E\u062A\u0627\u0645\u064A\u0629', '\u062D\u062C\u0632 \u0644\u0644\u062D\u0643\u0645', '2026-09-28', 3, '\u062D\u062C\u0632 \u0644\u0644\u062D\u0643\u0645', NULL),\n(20, 8, '2026-07-02', '10:15', 11, '\u0627\u0644\u062F\u0627\u0626\u0631\u0629 2 \u0627\u0642\u062A\u0635\u0627\u062F\u064A', '\u062E\u0628\u0631\u0629', '\u0627\u0646\u062A\u0642\u0627\u0644 \u0627\u0644\u062E\u0628\u064A\u0631 \u0644\u0644\u0645\u0639\u0627\u064A\u0646\u0629', '\u0623\u064F\u0648\u062F\u0639 \u0627\u0644\u062A\u0642\u0631\u064A\u0631', '2026-09-20', 2, '\u062A\u0645\u062A', NULL);\n\nINSERT OR IGNORE INTO tasks (id, title, description, case_id, client_id, assignee_id, creator_id, due_date, due_time, priority, status, category) VALUES\n(1, '\u0635\u064A\u0627\u063A\u0629 \u0645\u0630\u0643\u0631\u0629 \u062A\u0639\u0642\u064A\u0628 \u2014 \u0642\u0636\u064A\u0629 \u0623\u0637\u0644\u0633', '\u062A\u0639\u0642\u064A\u0628 \u0642\u0627\u0646\u0648\u0646\u064A \u0639\u0644\u0649 \u062F\u0641\u0639 \u0639\u062F\u0645 \u0627\u0644\u0627\u062E\u062A\u0635\u0627\u0635 \u0627\u0644\u0646\u0648\u0639\u064A \u0645\u0639 \u062D\u0627\u0641\u0638\u0629 \u0645\u0633\u062A\u0646\u062F\u0627\u062A \u062C\u062F\u064A\u062F\u0629.', 1, 1, 2, 1, '2026-09-19', '17:00', '\u0639\u0627\u062C\u0644\u0629', '\u062C\u0627\u0631\u064A\u0629', '\u0635\u064A\u0627\u063A\u0629'),\n(2, '\u0637\u0628\u0627\u0639\u0629 \u0627\u0644\u0645\u0630\u0643\u0631\u0629 \u0627\u0644\u062E\u062A\u0627\u0645\u064A\u0629 \u0644\u0644\u062A\u062D\u0643\u064A\u0645 \u2014 6 \u0646\u0633\u062E', '\u062A\u062C\u0644\u064A\u062F \u0641\u0627\u062E\u0631 + \u062A\u0628\u0644\u064A\u063A \u0627\u0644\u0633\u0643\u0631\u062A\u0627\u0631\u064A\u0629 \u0628\u063A\u0631\u0641\u0629 \u0627\u0644\u062A\u062D\u0643\u064A\u0645.', 2, 2, 8, 1, '2026-09-23', '12:00', '\u0639\u0627\u062C\u0644\u0629', '\u0645\u0641\u062A\u0648\u062D\u0629', '\u0625\u062F\u0627\u0631\u064A'),\n(3, '\u0627\u0633\u062A\u0644\u0627\u0645 \u0623\u0635\u0644 \u0627\u0644\u0634\u064A\u0643 \u0645\u0646 \u0627\u0644\u062E\u0632\u064A\u0646\u0629', '\u0642\u0636\u064A\u0629 \u0628\u0646\u0643 \u0627\u0644\u062F\u0644\u062A\u0627 \u2014 \u062C\u0644\u0633\u0629 \u0627\u0644\u064A\u0648\u0645.', 3, 3, 8, 3, '2026-09-17', '08:30', '\u0639\u0627\u062C\u0644\u0629', '\u062C\u0627\u0631\u064A\u0629', '\u0625\u062F\u0627\u0631\u064A'),\n(4, '\u0625\u0639\u062F\u0627\u062F \u0645\u0631\u0627\u0641\u0639\u0629 \u0627\u0644\u0646\u0637\u0642 \u0628\u0627\u0644\u062D\u0643\u0645 \u2014 \u0623\u0645\u0648\u0627\u0644 \u0639\u0627\u0645\u0629', '\u0646\u0642\u0627\u0637 \u0627\u0644\u0645\u0631\u0627\u0641\u0639\u0629 \u0627\u0644\u0627\u062D\u062A\u064A\u0627\u0637\u064A\u0629 \u0625\u0630\u0627 \u0637\u064F\u0644\u0628 \u062A\u0648\u0636\u064A\u062D.', 4, 1, 3, 1, '2026-09-27', '18:00', '\u0639\u0627\u0644\u064A\u0629', '\u0645\u0641\u062A\u0648\u062D\u0629', '\u0645\u0631\u0627\u0641\u0639\u0629'),\n(5, '\u0627\u0644\u062A\u0648\u0627\u0635\u0644 \u0645\u0639 \u0627\u0644\u0623\u062E\u0635\u0627\u0626\u064A \u0627\u0644\u0627\u062C\u062A\u0645\u0627\u0639\u064A \u2014 \u0623\u0633\u0631\u0629 \u0645\u0635\u0631 \u0627\u0644\u062C\u062F\u064A\u062F\u0629', '\u0637\u0644\u0628 \u0646\u0633\u062E\u0629 \u0627\u0644\u062A\u0642\u0631\u064A\u0631 \u0642\u0628\u0644 \u0627\u0644\u062C\u0644\u0633\u0629.', 5, 5, 4, 4, '2026-09-17', '15:00', '\u0639\u0627\u0644\u064A\u0629', '\u0645\u0641\u062A\u0648\u062D\u0629', '\u0628\u062D\u062B'),\n(6, '\u062A\u062C\u0645\u064A\u0639 \u0643\u0634\u0648\u0641 \u0627\u0644\u062A\u0623\u0645\u064A\u0646\u0627\u062A \u2014 \u0645\u0635\u0627\u0646\u0639 \u0627\u0644\u062F\u0644\u062A\u0627', '\u0645\u0646 2022 \u062D\u062A\u0649 2026 + \u0642\u0631\u0627\u0631\u0627\u062A \u0627\u0644\u0647\u064A\u0643\u0644\u0629.', 7, 6, 6, 6, '2026-09-21', '14:00', '\u0639\u0627\u0644\u064A\u0629', '\u062C\u0627\u0631\u064A\u0629', '\u0628\u062D\u062B'),\n(7, '\u0627\u062C\u062A\u0645\u0627\u0639 \u0645\u0639 \u0627\u0644\u062E\u0628\u064A\u0631 \u0627\u0644\u0627\u0633\u062A\u0634\u0627\u0631\u064A \u0643\u0645\u0627\u0644', '\u0645\u0644\u0627\u062D\u0638\u0627\u062A \u0639\u0644\u0649 \u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u062E\u0628\u0631\u0629 \u0627\u0644\u0647\u0646\u062F\u0633\u064A\u0629.', 8, 7, 2, 2, '2026-09-18', '16:00', '\u0639\u0627\u0644\u064A\u0629', '\u0645\u0641\u062A\u0648\u062D\u0629', '\u062E\u0628\u0631\u0629'),\n(8, '\u0625\u0639\u0644\u0627\u0646 \u0627\u0644\u062E\u0635\u0648\u0645 \u0628\u0635\u0648\u0631\u0629 \u0627\u0644\u062D\u0643\u0645 \u2014 \u0637\u0631\u062F \u0627\u0644\u063A\u0635\u0628', '\u0645\u062A\u0627\u0628\u0639\u0629 \u0645\u062D\u0636\u0631 \u0627\u0644\u062A\u0646\u0641\u064A\u0630.', 10, 9, 7, 2, '2026-09-25', '12:00', '\u0639\u0627\u062F\u064A\u0629', '\u0645\u0641\u062A\u0648\u062D\u0629', '\u062A\u0646\u0641\u064A\u0630'),\n(9, '\u062A\u062C\u062F\u064A\u062F \u0627\u0644\u062A\u0648\u0643\u064A\u0644 \u0627\u0644\u0639\u0627\u0645 \u2014 \u0645\u062C\u0645\u0648\u0639\u0629 \u0627\u0644\u0646\u064A\u0644', '\u064A\u0646\u062A\u0647\u064A \u0641\u064A 30 \u0623\u0643\u062A\u0648\u0628\u0631 2026.', 1, 1, 8, 1, '2026-10-10', '12:00', '\u0639\u0627\u0644\u064A\u0629', '\u0645\u0641\u062A\u0648\u062D\u0629', '\u0625\u062F\u0627\u0631\u064A'),\n(10, '\u0645\u0631\u0627\u062C\u0639\u0629 \u0641\u0627\u062A\u0648\u0631\u0629 \u0627\u0644\u0634\u0631\u0642 \u0644\u0644\u0625\u0646\u0634\u0627\u0621\u0627\u062A', '\u0631\u0628\u0637 \u0627\u0644\u0633\u0627\u0639\u0627\u062A \u063A\u064A\u0631 \u0627\u0644\u0645\u0641\u0648\u062A\u0631\u0629 \u0628\u0634\u0647\u0631 \u0623\u063A\u0633\u0637\u0633.', 2, 2, 9, 1, '2026-09-18', '11:00', '\u0639\u0627\u062F\u064A\u0629', '\u062C\u0627\u0631\u064A\u0629', '\u0625\u062F\u0627\u0631\u064A'),\n(11, '\u0628\u062D\u062B \u0633\u0648\u0627\u0628\u0642 \u0627\u0644\u0646\u0642\u0636 \u0641\u064A \u0627\u0644\u0634\u064A\u0643\u0627\u062A', '\u0644\u062F\u0639\u0645 \u0645\u0631\u0627\u0641\u0639\u0629 \u0627\u0644\u0645\u0639\u0627\u0631\u0636\u0629.', 11, 11, 7, 3, '2026-09-17', '09:00', '\u0639\u0627\u062F\u064A\u0629', '\u0645\u0643\u062A\u0645\u0644\u0629', '\u0628\u062D\u062B'),\n(12, '\u0635\u064A\u0627\u063A\u0629 \u0625\u0646\u0630\u0627\u0631 \u0639\u0631\u0636 \u2014 \u0648\u0627\u0626\u0644 \u0639\u0628\u062F\u0627\u0644\u0631\u062D\u0645\u0646', '\u0625\u0646\u0630\u0627\u0631 \u0631\u0633\u0645\u064A \u0644\u0644\u0645\u0642\u0627\u0648\u0644 \u0628\u062A\u0633\u0644\u064A\u0645 \u0627\u0644\u0645\u0633\u062A\u062E\u0644\u0635 \u0627\u0644\u062E\u062A\u0627\u0645\u064A.', 8, 7, 2, 2, '2026-09-26', '17:00', '\u0639\u0627\u062F\u064A\u0629', '\u0645\u0641\u062A\u0648\u062D\u0629', '\u0635\u064A\u0627\u063A\u0629'),\n(13, '\u0623\u0631\u0634\u0641\u0629 \u0645\u0633\u062A\u0646\u062F\u0627\u062A \u0627\u0644\u062C\u0646\u0627\u064A\u0627\u062A', '\u062A\u062C\u0647\u064A\u0632 \u062D\u0627\u0641\u0638\u0629 \u0627\u0644\u062C\u0644\u0633\u0629 \u0627\u0644\u0623\u062E\u064A\u0631\u0629.', 4, 1, 7, 3, '2026-09-20', '16:00', '\u0639\u0627\u062F\u064A\u0629', '\u0645\u0641\u062A\u0648\u062D\u0629', '\u0625\u062F\u0627\u0631\u064A'),\n(14, '\u0645\u062A\u0627\u0628\u0639\u0629 \u0633\u062F\u0627\u062F \u0641\u0627\u062A\u0648\u0631\u0629 \u0633\u0641\u0646\u0643\u0633', '\u0627\u0644\u0645\u062A\u0628\u0642\u064A 185 \u0623\u0644\u0641 \u062C\u0646\u064A\u0647.', NULL, 10, 9, 1, '2026-09-20', '12:00', '\u0639\u0627\u0644\u064A\u0629', '\u0645\u0641\u062A\u0648\u062D\u0629', '\u0625\u062F\u0627\u0631\u064A'),\n(15, '\u062A\u062C\u0647\u064A\u0632 \u0639\u0631\u0636 \u0623\u062A\u0639\u0627\u0628 \u0644\u0639\u0645\u064A\u0644 \u062C\u062F\u064A\u062F \u2014 \u0634\u0631\u0643\u0629 \u0645\u064A\u0631\u0643\u0627\u062A\u0648', '\u0627\u0633\u062A\u0634\u0627\u0631\u0629 \u062D\u0648\u0643\u0645\u0629 \u0634\u0631\u0643\u0627\u062A.', NULL, NULL, 2, 1, '2026-09-19', '13:00', '\u0639\u0627\u062F\u064A\u0629', '\u0645\u0641\u062A\u0648\u062D\u0629', '\u0635\u064A\u0627\u063A\u0629');\n\nINSERT OR IGNORE INTO documents (id, case_id, client_id, title, doc_type, ref_no, date_issued, pages, notes, uploaded_by) VALUES\n(1, 1, 1, '\u0639\u0642\u062F \u0627\u0644\u062A\u0648\u0631\u064A\u062F \u0627\u0644\u0645\u0624\u0631\u062E 12 \u064A\u0646\u0627\u064A\u0631 2024', '\u0639\u0642\u062F', 'ATL-2024-12', '2024-01-12', 48, '\u0627\u0644\u0646\u0633\u062E\u0629 \u0627\u0644\u0623\u0635\u0644\u064A\u0629 \u0645\u0648\u062F\u0639\u0629 \u0628\u0627\u0644\u062E\u0632\u064A\u0646\u0629', 2),\n(2, 1, 1, '\u0635\u062D\u064A\u0641\u0629 \u0627\u0644\u062F\u0639\u0648\u0649 \u0627\u0644\u0627\u0642\u062A\u0635\u0627\u062F\u064A\u0629', '\u0635\u062D\u064A\u0641\u0629', '1842/2025', '2025-03-12', 22, NULL, 2),\n(3, 2, 2, '\u0639\u0642\u062F \u0641\u064A\u062F\u064A\u0643 \u0627\u0644\u0623\u062D\u0645\u0631 \u2014 \u0627\u0644\u0639\u0627\u0635\u0645\u0629 \u0627\u0644\u0625\u062F\u0627\u0631\u064A\u0629', '\u0639\u0642\u062F', 'FIDIC-NUCA-19', '2019-04-01', 210, '\u0646\u0633\u062E\u0629 \u0645\u062A\u0631\u062C\u0645\u0629 \u0648\u0645\u0639\u062A\u0645\u062F\u0629', 1),\n(4, 2, 2, '\u0627\u0644\u0645\u0630\u0643\u0631\u0629 \u0627\u0644\u0627\u0641\u062A\u062A\u0627\u062D\u064A\u0629 \u0644\u0644\u062A\u062D\u0643\u064A\u0645', '\u0645\u0630\u0643\u0631\u0629', 'ARB-771', '2024-11-02', 86, NULL, 1),\n(5, 3, 3, '\u0623\u0635\u0644 \u0627\u0644\u0634\u064A\u0643 \u0631\u0642\u0645 441209', '\u0623\u062E\u0631\u0649', 'CHQ-441209', '2025-12-01', 1, '\u0641\u064A \u062E\u0632\u064A\u0646\u0629 \u0627\u0644\u0645\u0643\u062A\u0628', 3),\n(6, 4, 1, '\u0623\u0645\u0631 \u0627\u0644\u0625\u062D\u0627\u0644\u0629 \u0645\u0646 \u0627\u0644\u0646\u064A\u0627\u0628\u0629', '\u0623\u062E\u0631\u0649', 'PA-908-2025', '2025-06-01', 34, NULL, 3),\n(7, 4, 1, '\u0645\u0630\u0643\u0631\u0629 \u0627\u0644\u062F\u0641\u0627\u0639 \u0627\u0644\u062E\u062A\u0627\u0645\u064A\u0629', '\u0645\u0630\u0643\u0631\u0629', 'DEF-908', '2026-07-08', 64, NULL, 3),\n(8, 5, 5, '\u0639\u0642\u062F \u0627\u0644\u0632\u0648\u0627\u062C \u0648\u0635\u0648\u0631 \u0634\u0647\u0627\u062F\u0627\u062A \u0627\u0644\u0645\u064A\u0644\u0627\u062F', '\u0623\u062E\u0631\u0649', NULL, '2016-05-20', 6, NULL, 4),\n(9, 5, 5, '\u0635\u062D\u064A\u0641\u0629 \u062F\u0639\u0648\u0649 \u0627\u0644\u0637\u0644\u0627\u0642 \u0644\u0644\u0636\u0631\u0631', '\u0635\u062D\u064A\u0641\u0629', '2104/2026', '2026-02-11', 14, NULL, 4),\n(10, 10, 9, '\u0635\u0648\u0631\u0629 \u0627\u0644\u062D\u0643\u0645 \u0628\u0627\u0644\u0637\u0631\u062F', '\u062D\u0643\u0645', '8022/2023', '2026-05-12', 9, '\u0646\u0633\u062E\u0629 \u062A\u0646\u0641\u064A\u0630\u064A\u0629', 2),\n(11, 7, 6, '\u0642\u0631\u0627\u0631\u0627\u062A \u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u0647\u064A\u0643\u0644\u0629', '\u0623\u062E\u0631\u0649', 'HR-2026-04', '2026-04-01', 18, NULL, 6),\n(12, NULL, 1, '\u0627\u0644\u0633\u062C\u0644 \u0627\u0644\u062A\u062C\u0627\u0631\u064A \u0648\u0627\u0644\u062A\u0648\u0643\u064A\u0644 \u0627\u0644\u0639\u0627\u0645', '\u062A\u0648\u0643\u064A\u0644', 'POA-2014-77', '2014-02-01', 4, NULL, 8);\n\nINSERT OR IGNORE INTO powers_of_attorney (id, poa_no, client_id, case_id, lawyer_id, type, notary_office, issue_date, expiry_date, status, scope, notes) VALUES\n(1, '4412 \u0644\u0633\u0646\u0629 2024 \u062A\u0648\u062B\u064A\u0642 \u0642\u0635\u0631 \u0627\u0644\u0646\u064A\u0644', 1, NULL, 1, '\u0639\u0627\u0645 \u0642\u0636\u0627\u064A\u0627', '\u0645\u0643\u062A\u0628 \u062A\u0648\u062B\u064A\u0642 \u0642\u0635\u0631 \u0627\u0644\u0646\u064A\u0644', '2024-10-30', '2026-10-30', '\u0633\u0627\u0631\u064A', '\u0627\u0644\u062D\u0636\u0648\u0631 \u0623\u0645\u0627\u0645 \u062C\u0645\u064A\u0639 \u0627\u0644\u0645\u062D\u0627\u0643\u0645 \u0648\u0627\u0644\u0646\u064A\u0627\u0628\u0627\u062A \u0648\u0647\u064A\u0626\u0627\u062A \u0627\u0644\u062A\u062D\u0643\u064A\u0645 \u0648\u0627\u0644\u062A\u0648\u0642\u064A\u0639 \u0639\u0644\u0649 \u0627\u0644\u0645\u0630\u0643\u0631\u0627\u062A.', '\u064A\u062D\u062A\u0627\u062C \u062A\u062C\u062F\u064A\u062F \u0642\u0628\u0644 \u0646\u0647\u0627\u064A\u0629 \u0623\u0643\u062A\u0648\u0628\u0631'),\n(2, '118 \u0644\u0633\u0646\u0629 2025 \u062A\u0648\u062B\u064A\u0642 \u0627\u0644\u062C\u064A\u0632\u0629', 2, 2, 1, '\u062E\u0627\u0635', '\u0645\u0643\u062A\u0628 \u062A\u0648\u062B\u064A\u0642 \u0627\u0644\u062C\u064A\u0632\u0629', '2025-01-15', NULL, '\u0633\u0627\u0631\u064A', '\u062A\u0645\u062B\u064A\u0644 \u0627\u0644\u0634\u0631\u0643\u0629 \u0641\u064A \u062A\u062D\u0643\u064A\u0645 \u063A\u0631\u0641\u0629 \u0627\u0644\u0642\u0627\u0647\u0631\u0629 \u0631\u0642\u0645 771 \u0644\u0633\u0646\u0629 2024.', NULL),\n(3, '902 \u0644\u0633\u0646\u0629 2023 \u062A\u0648\u062B\u064A\u0642 \u0639\u0627\u0628\u062F\u064A\u0646', 3, NULL, 3, '\u0639\u0627\u0645 \u0642\u0636\u0627\u064A\u0627', '\u0645\u0643\u062A\u0628 \u062A\u0648\u062B\u064A\u0642 \u0639\u0627\u0628\u062F\u064A\u0646', '2023-06-01', '2027-06-01', '\u0633\u0627\u0631\u064A', '\u0642\u0636\u0627\u064A\u0627 \u0627\u0644\u0628\u0646\u0643 \u0627\u0644\u062C\u0646\u0627\u0626\u064A\u0629 \u0648\u0627\u0644\u0645\u062F\u0646\u064A\u0629 \u0627\u0644\u0645\u062A\u0639\u0644\u0642\u0629 \u0628\u0627\u0644\u0634\u064A\u0643\u0627\u062A.', NULL),\n(4, '55 \u0644\u0633\u0646\u0629 2026 \u062A\u0648\u062B\u064A\u0642 \u0645\u0635\u0631 \u0627\u0644\u062C\u062F\u064A\u062F\u0629', 5, 5, 4, '\u062E\u0627\u0635', '\u0645\u0643\u062A\u0628 \u062A\u0648\u062B\u064A\u0642 \u0645\u0635\u0631 \u0627\u0644\u062C\u062F\u064A\u062F\u0629', '2026-02-08', NULL, '\u0633\u0627\u0631\u064A', '\u062F\u0639\u0648\u0649 \u0637\u0644\u0627\u0642 \u0648\u0646\u0641\u0642\u0629 \u0648\u062D\u0636\u0627\u0646\u0629 \u0641\u0642\u0637.', NULL),\n(5, '210 \u0644\u0633\u0646\u0629 2025 \u062A\u0648\u062B\u064A\u0642 \u0627\u0644\u0632\u0645\u0627\u0644\u0643', 4, 6, 4, '\u0639\u0627\u0645 \u0642\u0636\u0627\u064A\u0627', '\u0645\u0643\u062A\u0628 \u062A\u0648\u062B\u064A\u0642 \u0627\u0644\u0632\u0645\u0627\u0644\u0643', '2025-08-20', '2028-08-20', '\u0633\u0627\u0631\u064A', '\u0627\u0644\u0642\u0633\u0645\u0629 \u0627\u0644\u0639\u0642\u0627\u0631\u064A\u0629 \u0648\u0645\u0627 \u064A\u062A\u0641\u0631\u0639 \u0639\u0646\u0647\u0627.', NULL),\n(6, '77 \u0644\u0633\u0646\u0629 2022 \u062A\u0648\u062B\u064A\u0642 \u0627\u0644\u0645\u0647\u0646\u062F\u0633\u064A\u0646', 10, 9, 5, '\u0631\u0633\u0645\u064A \u0639\u0627\u0645', '\u0645\u0643\u062A\u0628 \u062A\u0648\u062B\u064A\u0642 \u0627\u0644\u0645\u0647\u0646\u062F\u0633\u064A\u0646', '2022-03-11', '2026-03-11', '\u0645\u0646\u062A\u0647\u064D', '\u062A\u0645\u062B\u064A\u0644 \u0627\u0644\u0634\u0631\u0643\u0629 \u0623\u0645\u0627\u0645 \u0645\u062C\u0644\u0633 \u0627\u0644\u062F\u0648\u0644\u0629.', '\u064A\u062D\u062A\u0627\u062C \u062A\u062C\u062F\u064A\u062F \u0641\u0648\u0631\u064A'),\n(7, '330 \u0644\u0633\u0646\u0629 2024 \u062A\u0648\u062B\u064A\u0642 \u0627\u0644\u0645\u062D\u0644\u0629', 6, 7, 6, '\u0639\u0627\u0645 \u0642\u0636\u0627\u064A\u0627', '\u0645\u0643\u062A\u0628 \u062A\u0648\u062B\u064A\u0642 \u0627\u0644\u0645\u062D\u0644\u0629 \u0627\u0644\u0643\u0628\u0631\u0649', '2024-12-01', '2027-12-01', '\u0633\u0627\u0631\u064A', '\u0627\u0644\u062F\u0639\u0627\u0648\u0649 \u0627\u0644\u0639\u0645\u0627\u0644\u064A\u0629.', NULL),\n(8, '12 \u0644\u0633\u0646\u0629 2021 \u062A\u0648\u062B\u064A\u0642 \u0642\u0635\u0631 \u0627\u0644\u0646\u064A\u0644', 1, NULL, 2, '\u0631\u0633\u0645\u064A \u0639\u0627\u0645', '\u0645\u0643\u062A\u0628 \u062A\u0648\u062B\u064A\u0642 \u0642\u0635\u0631 \u0627\u0644\u0646\u064A\u0644', '2021-01-10', '2024-01-10', '\u0645\u0644\u063A\u0649', '\u0623\u064F\u0644\u063A\u064A \u0628\u0639\u062F \u0635\u062F\u0648\u0631 \u062A\u0648\u0643\u064A\u0644 2024.', NULL);\n\nINSERT OR IGNORE INTO invoices (id, invoice_no, client_id, case_id, issue_date, due_date, subtotal, tax, discount, total, paid, status, notes, created_by) VALUES\n(1, 'INV-2026-014', 1, 4, '2026-07-15', '2026-08-15', 850000, 119000, 0, 969000, 969000, '\u0645\u0633\u062F\u062F\u0629', '\u0623\u062A\u0639\u0627\u0628 \u0645\u0631\u062D\u0644\u0629 \u0627\u0644\u062C\u0646\u0627\u064A\u0627\u062A \u062D\u062A\u0649 \u0627\u0644\u0645\u0631\u0627\u0641\u0639\u0629 \u0627\u0644\u062E\u062A\u0627\u0645\u064A\u0629', 9),\n(2, 'INV-2026-018', 2, 2, '2026-08-01', '2026-09-01', 420000, 58800, 20000, 458800, 250000, '\u062C\u0632\u0626\u064A', '\u0634\u0631\u064A\u062D\u0629 \u0627\u0644\u062A\u062D\u0643\u064A\u0645 \u0627\u0644\u062B\u0627\u0644\u062B\u0629', 9),\n(3, 'INV-2026-021', 10, 9, '2026-08-20', '2026-09-20', 180000, 25200, 0, 205200, 20000, '\u0645\u062A\u0623\u062E\u0631\u0629', '\u0623\u062A\u0639\u0627\u0628 \u0645\u062C\u0644\u0633 \u0627\u0644\u062F\u0648\u0644\u0629 \u2014 \u0627\u0644\u0631\u0628\u0639 \u0627\u0644\u062B\u0627\u0644\u062B', 9),\n(4, 'INV-2026-022', 5, 5, '2026-09-01', '2026-09-30', 45000, 0, 0, 45000, 45000, '\u0645\u0633\u062F\u062F\u0629', '\u0623\u062A\u0639\u0627\u0628 \u0627\u0641\u062A\u062A\u0627\u062D \u062F\u0639\u0648\u0649 \u0627\u0644\u0623\u0633\u0631\u0629', 9),\n(5, 'INV-2026-023', 7, 8, '2026-09-05', '2026-10-05', 110000, 15400, 0, 125400, 0, '\u0635\u0627\u062F\u0631\u0629', '\u0623\u062A\u0639\u0627\u0628 \u0627\u0644\u062E\u0628\u0631\u0629 \u0648\u0627\u0644\u0645\u0631\u062D\u0644\u0629 \u0627\u0644\u062D\u0627\u0644\u064A\u0629', 9),\n(6, 'INV-2026-024', 6, 7, '2026-09-10', '2026-10-10', 75000, 10500, 0, 85500, 0, '\u0635\u0627\u062F\u0631\u0629', '\u0623\u062A\u0639\u0627\u0628 \u0627\u0644\u062F\u0639\u0627\u0648\u0649 \u0627\u0644\u0639\u0645\u0627\u0644\u064A\u0629 \u2014 \u0633\u0628\u062A\u0645\u0628\u0631', 9),\n(7, 'INV-2026-025', 3, 3, '2026-09-12', '2026-10-12', 28000, 3920, 0, 31920, 0, '\u0645\u0633\u0648\u062F\u0629', '\u062C\u0646\u062D\u0629 \u0627\u0644\u0634\u064A\u0643 \u2014 \u0645\u0631\u062D\u0644\u0629 \u0627\u0644\u062A\u062D\u0642\u064A\u0642', 9),\n(8, 'INV-2025-088', 9, 10, '2026-05-20', '2026-06-20', 35000, 0, 5000, 30000, 30000, '\u0645\u0633\u062F\u062F\u0629', '\u0623\u062A\u0639\u0627\u0628 \u0627\u0644\u0637\u0631\u062F \u0648\u0627\u0644\u062A\u0646\u0641\u064A\u0630', 9);\n\nINSERT OR IGNORE INTO invoice_items (id, invoice_id, description, qty, unit_price, amount) VALUES\n(1, 1, '\u0623\u062A\u0639\u0627\u0628 \u0627\u0644\u0645\u0631\u0627\u0641\u0639\u0629 \u0623\u0645\u0627\u0645 \u062C\u0646\u0627\u064A\u0627\u062A \u0627\u0644\u0623\u0645\u0648\u0627\u0644 \u0627\u0644\u0639\u0627\u0645\u0629', 1, 700000, 700000),\n(2, 1, '\u0633\u0627\u0639\u0627\u062A \u0628\u062D\u062B \u0642\u0627\u0646\u0648\u0646\u064A (40 \u0633\u0627\u0639\u0629)', 40, 3750, 150000),\n(3, 2, '\u0634\u0631\u064A\u062D\u0629 \u062A\u062D\u0643\u064A\u0645 \u2014 \u0627\u0644\u0645\u0631\u0627\u0641\u0639\u0629 \u0627\u0644\u062E\u062A\u0627\u0645\u064A\u0629', 1, 350000, 350000),\n(4, 2, '\u0623\u062A\u0639\u0627\u0628 \u0627\u0644\u062E\u0628\u064A\u0631 \u0627\u0644\u0627\u0633\u062A\u0634\u0627\u0631\u064A (\u0625\u0639\u0627\u062F\u0629 \u062A\u062D\u0645\u064A\u0644)', 1, 70000, 70000),\n(5, 3, '\u0623\u062A\u0639\u0627\u0628 \u0631\u0628\u0639 \u0633\u0646\u0648\u064A\u0629 \u2014 \u0642\u0636\u0627\u0621 \u0625\u062F\u0627\u0631\u064A', 1, 180000, 180000),\n(6, 4, '\u0623\u062A\u0639\u0627\u0628 \u0627\u0641\u062A\u062A\u0627\u062D \u062F\u0639\u0648\u0649 \u0637\u0644\u0627\u0642 \u0648\u0646\u0641\u0642\u0629', 1, 45000, 45000),\n(7, 5, '\u0623\u062A\u0639\u0627\u0628 \u0627\u0644\u0645\u0631\u062D\u0644\u0629 \u062D\u062A\u0649 \u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u062E\u0628\u0631\u0629', 1, 110000, 110000),\n(8, 6, '\u0623\u062A\u0639\u0627\u0628 \u062A\u0645\u062B\u064A\u0644 \u0641\u064A 42 \u062F\u0639\u0648\u0649 \u0639\u0645\u0627\u0644\u064A\u0629 \u2014 \u0633\u0628\u062A\u0645\u0628\u0631', 1, 75000, 75000),\n(9, 7, '\u0623\u062A\u0639\u0627\u0628 \u062D\u0636\u0648\u0631 \u0648\u062A\u062D\u0642\u064A\u0642 \u062C\u0646\u062D\u0629 \u0634\u064A\u0643', 1, 28000, 28000),\n(10, 8, '\u0623\u062A\u0639\u0627\u0628 \u062F\u0639\u0648\u0649 \u0627\u0644\u0637\u0631\u062F \u0648\u0627\u0644\u062A\u0646\u0641\u064A\u0630', 1, 35000, 35000);\n\nINSERT OR IGNORE INTO payments (id, invoice_id, client_id, amount, method, paid_at, reference, notes, received_by) VALUES\n(1, 1, 1, 969000, '\u062A\u062D\u0648\u064A\u0644', '2026-08-02', 'TRX-NILE-88021', '\u0633\u062F\u0627\u062F \u0643\u0627\u0645\u0644', 9),\n(2, 2, 2, 250000, '\u0634\u064A\u0643', '2026-08-18', 'CHQ-44190', '\u062F\u0641\u0639\u0629 \u0623\u0648\u0644\u0649', 9),\n(3, 3, 10, 20000, '\u062A\u062D\u0648\u064A\u0644', '2026-08-28', 'TRX-SPH-1022', '\u062F\u0641\u0639\u0629 \u0631\u0645\u0632\u064A\u0629', 9),\n(4, 4, 5, 45000, '\u0646\u0642\u062F\u064A', '2026-09-01', NULL, '\u0633\u062F\u0627\u062F \u0628\u0645\u0642\u0631 \u0627\u0644\u0645\u0643\u062A\u0628', 8),\n(5, 8, 9, 30000, '\u062A\u062D\u0648\u064A\u0644', '2026-06-01', 'TRX-DK-55', NULL, 9);\n\nINSERT OR IGNORE INTO expenses (id, case_id, title, category, amount, expense_date, billable, billed, vendor, notes, created_by) VALUES\n(1, 1, '\u0631\u0633\u0648\u0645 \u0625\u064A\u062F\u0627\u0639 \u0635\u062D\u064A\u0641\u0629 \u0627\u0642\u062A\u0635\u0627\u062F\u064A\u0629', '\u0631\u0633\u0648\u0645 \u0645\u062D\u0643\u0645\u0629', 12500, '2025-03-12', 1, 1, '\u0645\u062D\u0643\u0645\u0629 \u0627\u0642\u062A\u0635\u0627\u062F\u064A \u0627\u0644\u0642\u0627\u0647\u0631\u0629', NULL, 9),\n(2, 2, '\u0631\u0633\u0648\u0645 \u063A\u0631\u0641\u0629 \u0627\u0644\u062A\u062D\u0643\u064A\u0645 \u2014 \u0627\u0644\u0634\u0631\u064A\u062D\u0629 \u0627\u0644\u062B\u0627\u0644\u062B\u0629', '\u0631\u0633\u0648\u0645 \u0645\u062D\u0643\u0645\u0629', 85000, '2026-08-01', 1, 1, 'CRCICA', NULL, 9),\n(3, 5, '\u0625\u0639\u0644\u0627\u0646 \u0639\u0644\u0649 \u064A\u062F \u0645\u062D\u0636\u0631', '\u0625\u0639\u0644\u0627\u0646\u0627\u062A', 850, '2026-02-15', 1, 1, '\u0642\u0644\u0645 \u0627\u0644\u0645\u062D\u0636\u0631\u064A\u0646', NULL, 8),\n(4, 8, '\u0623\u062A\u0639\u0627\u0628 \u062E\u0628\u064A\u0631 \u0647\u0646\u062F\u0633\u064A \u0627\u0633\u062A\u0634\u0627\u0631\u064A', '\u062E\u0628\u0631\u0629', 18000, '2026-07-10', 1, 0, '\u0645. \u0643\u0645\u0627\u0644 \u0639\u0628\u062F\u0627\u0644\u0646\u0648\u0631', '\u0644\u0645 \u062A\u064F\u0631\u062D\u0651\u064E\u0644 \u0628\u0639\u062F \u0639\u0644\u0649 \u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629', 9),\n(5, 4, '\u062A\u0635\u0648\u064A\u0631 \u0648\u062A\u062C\u0644\u064A\u062F \u062D\u0648\u0627\u0641\u0638 \u0627\u0644\u062C\u0646\u0627\u064A\u0627\u062A', '\u062A\u0635\u0648\u064A\u0631', 2400, '2026-07-05', 1, 1, '\u0645\u0631\u0643\u0632 \u0627\u0644\u0646\u064A\u0644 \u0644\u0644\u062A\u0635\u0648\u064A\u0631', NULL, 8),\n(6, 2, '\u062A\u0631\u062C\u0645\u0629 \u0645\u0639\u062A\u0645\u062F\u0629 \u0644\u0639\u0642\u062F \u0641\u064A\u062F\u064A\u0643', '\u062A\u0631\u062C\u0645\u0629', 14500, '2024-10-20', 1, 1, '\u0645\u0643\u062A\u0628 \u0623\u0644\u0633\u0646 \u0627\u0644\u0645\u0639\u062A\u0645\u062F', NULL, 9),\n(7, NULL, '\u0627\u0646\u062A\u0642\u0627\u0644\u0627\u062A \u0623\u0633\u0628\u0648\u0639 14 \u0633\u0628\u062A\u0645\u0628\u0631', '\u0627\u0646\u062A\u0642\u0627\u0644\u0627\u062A', 3200, '2026-09-14', 0, 0, '\u0633\u0627\u0626\u0642 \u0627\u0644\u0645\u0643\u062A\u0628', '\u063A\u064A\u0631 \u0642\u0627\u0628\u0644\u0629 \u0644\u0644\u062A\u0631\u062D\u064A\u0644', 8),\n(8, 7, '\u0627\u0633\u062A\u062E\u0631\u0627\u062C \u0643\u0634\u0648\u0641 \u062A\u0623\u0645\u064A\u0646\u0627\u062A', '\u0623\u062E\u0631\u0649', 600, '2026-09-08', 1, 0, '\u0627\u0644\u062A\u0623\u0645\u064A\u0646\u0627\u062A \u0627\u0644\u0627\u062C\u062A\u0645\u0627\u0639\u064A\u0629', NULL, 6);\n\nINSERT OR IGNORE INTO time_entries (id, user_id, case_id, work_date, hours, description, billable, billed, rate) VALUES\n(1, 2, 1, '2026-09-16', 4.5, '\u0635\u064A\u0627\u063A\u0629 \u0645\u0630\u0643\u0631\u0629 \u0627\u0644\u062A\u0639\u0642\u064A\u0628 \u2014 \u0627\u0644\u062F\u0641\u0639 \u0628\u0639\u062F\u0645 \u0627\u0644\u0627\u062E\u062A\u0635\u0627\u0635', 1, 0, 3800),\n(2, 1, 2, '2026-09-15', 6.0, '\u0645\u0631\u0627\u062C\u0639\u0629 \u0627\u0644\u0645\u0630\u0643\u0631\u0629 \u0627\u0644\u062E\u062A\u0627\u0645\u064A\u0629 \u0644\u0644\u062A\u062D\u0643\u064A\u0645', 1, 0, 4500),\n(3, 3, 4, '2026-09-14', 3.0, '\u062A\u062D\u0636\u064A\u0631 \u0646\u0642\u0627\u0637 \u0627\u0644\u0645\u0631\u0627\u0641\u0639\u0629 \u0627\u0644\u0627\u062D\u062A\u064A\u0627\u0637\u064A\u0629', 1, 1, 3200),\n(4, 4, 5, '2026-09-13', 2.0, '\u0645\u0631\u0627\u062C\u0639\u0629 \u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u0623\u062E\u0635\u0627\u0626\u064A \u0648\u0627\u0644\u062A\u0648\u0627\u0635\u0644 \u0645\u0639 \u0627\u0644\u0645\u0648\u0643\u0644\u0629', 1, 0, 2200),\n(5, 6, 7, '2026-09-12', 5.0, '\u062C\u0631\u062F \u0645\u0644\u0641\u0627\u062A \u0627\u0644\u0639\u0645\u0627\u0644 \u0648\u0645\u0637\u0627\u0628\u0642\u0629 \u0627\u0644\u062A\u0623\u0645\u064A\u0646\u0627\u062A', 1, 0, 1500),\n(6, 2, 8, '2026-09-11', 3.5, '\u062F\u0631\u0627\u0633\u0629 \u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u062E\u0628\u0631\u0629 \u0627\u0644\u0647\u0646\u062F\u0633\u064A\u0629', 1, 0, 3800),\n(7, 5, 9, '2026-09-10', 2.5, '\u0645\u0630\u0643\u0631\u0629 \u062A\u0639\u0642\u064A\u0628 \u0623\u062E\u064A\u0631\u0629 \u0623\u0645\u0627\u0645 \u0627\u0644\u0642\u0636\u0627\u0621 \u0627\u0644\u0625\u062F\u0627\u0631\u064A', 1, 1, 1800),\n(8, 7, 1, '2026-09-16', 3.0, '\u062A\u062C\u0647\u064A\u0632 \u062D\u0627\u0641\u0638\u0629 \u0627\u0644\u0645\u0633\u062A\u0646\u062F\u0627\u062A \u0648\u062A\u0635\u0648\u064A\u0631\u0647\u0627', 0, 0, 400),\n(9, 1, 12, '2026-09-11', 4.0, '\u0625\u0639\u062F\u0627\u062F \u0627\u0644\u0645\u0631\u0627\u0641\u0639\u0629 \u0627\u0644\u0627\u0633\u062A\u0626\u0646\u0627\u0641\u064A\u0629', 1, 0, 4500),\n(10, 3, 3, '2026-09-16', 1.5, '\u0645\u0631\u0627\u062C\u0639\u0629 \u0645\u0644\u0641 \u0627\u0644\u0634\u064A\u0643 \u0642\u0628\u0644 \u062C\u0644\u0633\u0629 \u0627\u0644\u063A\u062F', 1, 0, 3200);\n\nINSERT OR IGNORE INTO contracts (id, title, client_id, type, start_date, end_date, value, status, notes) VALUES\n(1, '\u0627\u062A\u0641\u0627\u0642\u064A\u0629 \u0623\u062A\u0639\u0627\u0628 \u0633\u0646\u0648\u064A\u0629 \u2014 \u0645\u062C\u0645\u0648\u0639\u0629 \u0627\u0644\u0646\u064A\u0644 \u0627\u0644\u0642\u0627\u0628\u0636\u0629', 1, '\u0623\u062A\u0639\u0627\u0628', '2026-01-01', '2026-12-31', 2400000, '\u0633\u0627\u0631\u064A', '\u0634\u0631\u0627\u0626\u062D \u0631\u0628\u0639 \u0633\u0646\u0648\u064A\u0629 + \u0623\u062A\u0639\u0627\u0628 \u0646\u062C\u0627\u062D \u0641\u064A \u0627\u0644\u062A\u062D\u0643\u064A\u0645'),\n(2, '\u0627\u062A\u0641\u0627\u0642\u064A\u0629 \u062A\u062D\u0643\u064A\u0645 \u2014 \u0627\u0644\u0634\u0631\u0642 \u0644\u0644\u0625\u0646\u0634\u0627\u0621\u0627\u062A', 2, '\u0623\u062A\u0639\u0627\u0628', '2024-11-01', '2027-11-01', 1800000, '\u0633\u0627\u0631\u064A', '\u0645\u0631\u062A\u0628\u0637\u0629 \u0628\u0642\u0636\u064A\u0629 CRCICA 771'),\n(3, '\u0639\u0642\u062F \u0627\u0633\u062A\u0634\u0627\u0631\u0629 \u0642\u0627\u0646\u0648\u0646\u064A\u0629 \u2014 \u0628\u0646\u0643 \u0627\u0644\u062F\u0644\u062A\u0627', 3, '\u0627\u0633\u062A\u0634\u0627\u0631\u0629', '2025-01-01', '2026-12-31', 480000, '\u0633\u0627\u0631\u064A', '\u0642\u0636\u0627\u064A\u0627 \u0627\u0644\u0634\u064A\u0643\u0627\u062A \u0641\u0642\u0637 \u2014 \u062E\u0627\u0631\u062C \u0646\u0637\u0627\u0642 \u0627\u0644\u0627\u0626\u062A\u0645\u0627\u0646'),\n(4, '\u0627\u062A\u0641\u0627\u0642 \u0623\u062A\u0639\u0627\u0628 \u0623\u0633\u0631\u0629 \u2014 \u0647\u0627\u0644\u0629 \u0627\u0644\u0634\u0631\u064A\u0641', 5, '\u0623\u062A\u0639\u0627\u0628', '2026-02-08', NULL, 90000, '\u0633\u0627\u0631\u064A', '\u0645\u0631\u062D\u0644\u062A\u0627\u0646: \u0627\u0628\u062A\u062F\u0627\u0626\u064A \u062B\u0645 \u0627\u0633\u062A\u0626\u0646\u0627\u0641 \u0625\u0646 \u0644\u0632\u0645'),\n(5, '\u0639\u0642\u062F \u0625\u062F\u0627\u0631\u0629 \u0641\u0646\u062F\u0642 \u2014 \u0633\u0641\u0646\u0643\u0633 (\u0645\u0631\u0627\u062C\u0639\u0629)', 10, '\u0623\u062E\u0631\u0649', '2023-06-01', '2028-06-01', 0, '\u0633\u0627\u0631\u064A', '\u0646\u062D\u0646 \u0627\u0644\u0645\u0633\u062A\u0634\u0627\u0631 \u0627\u0644\u0642\u0627\u0646\u0648\u0646\u064A \u0644\u0644\u0637\u0631\u0641 \u0627\u0644\u0623\u0648\u0644');\n\nINSERT OR IGNORE INTO notes (id, case_id, client_id, user_id, content, pinned) VALUES\n(1, 2, 2, 1, '\u0647\u064A\u0626\u0629 \u0627\u0644\u062A\u062D\u0643\u064A\u0645 \u062A\u0645\u064A\u0644 \u0644\u0642\u0628\u0648\u0644 \u0645\u0637\u0627\u0644\u0628\u0629 \u062A\u0645\u062F\u064A\u062F \u0627\u0644\u0645\u062F\u0629. \u0646\u0631\u0643\u0651\u0632 \u0627\u0644\u0645\u0631\u0627\u0641\u0639\u0629 \u0627\u0644\u062E\u062A\u0627\u0645\u064A\u0629 \u0639\u0644\u0649 \u0628\u0646\u0648\u062F 8.4 \u064820.1 \u0645\u0646 \u0627\u0644\u0641\u064A\u062F\u064A\u0643.', 1),\n(2, 4, 1, 3, '\u0627\u0644\u0634\u0627\u0647\u062F \u0627\u0644\u062B\u0627\u0646\u064A \u0644\u0644\u0646\u064A\u0627\u0628\u0629 \u062A\u0636\u0627\u0631\u0628 \u0641\u064A \u0623\u0642\u0648\u0627\u0644\u0647 \u0628\u062A\u0627\u0631\u064A\u062E 8 \u064A\u0648\u0644\u064A\u0648. \u0646\u0639\u064A\u062F \u0642\u0631\u0627\u0621\u0629 \u0627\u0644\u0645\u062D\u0636\u0631 \u0642\u0628\u0644 \u0627\u0644\u0646\u0637\u0642.', 1),\n(3, 5, 5, 4, '\u0627\u0644\u0645\u0648\u0643\u0644\u0629 \u062A\u0631\u0641\u0636 \u0627\u0644\u0639\u0631\u0636 \u0627\u0644\u0645\u0627\u0644\u064A \u0627\u0644\u062D\u0627\u0644\u064A (8 \u0622\u0644\u0627\u0641 \u0646\u0641\u0642\u0629). \u0646\u0637\u0644\u0628 14 \u0623\u0644\u0641\u0627\u064B \u0645\u0639 \u0627\u0633\u062A\u0645\u0631\u0627\u0631 \u0645\u0633\u0643\u0646 \u0627\u0644\u062D\u0636\u0627\u0646\u0629.', 0),\n(4, 1, 1, 2, '\u062E\u0635\u0645 \u0623\u0637\u0644\u0633 \u062F\u0641\u0639 \u0628\u0639\u062F\u0645 \u0627\u062E\u062A\u0635\u0627\u0635 \u0627\u0644\u0627\u0642\u062A\u0635\u0627\u062F\u064A. \u0627\u0644\u0633\u0648\u0627\u0628\u0642 \u0645\u0639\u0646\u0627 \u2014 \u0639\u0642\u062F \u062A\u0648\u0631\u064A\u062F \u062A\u062C\u0627\u0631\u064A \u0628\u062D\u062A.', 0),\n(5, NULL, 1, 1, '\u0627\u062C\u062A\u0645\u0627\u0639 \u0631\u0628\u0639 \u0633\u0646\u0648\u064A \u0645\u0639 \u0627\u0644\u0639\u0636\u0648 \u0627\u0644\u0645\u0646\u062A\u062F\u0628 \u0644\u0645\u062C\u0645\u0648\u0639\u0629 \u0627\u0644\u0646\u064A\u0644 \u064A\u0648\u0645 29 \u0633\u0628\u062A\u0645\u0628\u0631 \u0627\u0644\u0633\u0627\u0639\u0629 5 \u0645\u0633\u0627\u0621\u064B \u0641\u064A \u0646\u0627\u064A\u0644 \u0633\u064A\u062A\u064A.', 1);\n\nINSERT OR IGNORE INTO activities (id, user_id, entity_type, entity_id, action, detail, created_at) VALUES\n(1, 2, 'case', 1, '\u062A\u062D\u062F\u064A\u062B', '\u0623\u064F\u0636\u064A\u0641\u062A \u062D\u0627\u0641\u0638\u0629 \u0645\u0633\u062A\u0646\u062F\u0627\u062A \u062C\u062F\u064A\u062F\u0629 \u0648\u0623\u064F\u0639\u062F\u0651\u062A \u0645\u0633\u0648\u062F\u0629 \u0627\u0644\u062A\u0639\u0642\u064A\u0628', '2026-09-16 18:12:00'),\n(2, 1, 'hearing', 2, '\u062C\u062F\u0648\u0644\u0629', '\u062A\u0623\u0643\u064A\u062F \u062C\u0644\u0633\u0629 \u0627\u0644\u0645\u0631\u0627\u0641\u0639\u0629 \u0627\u0644\u062E\u062A\u0627\u0645\u064A\u0629 \u0641\u064A CRCICA', '2026-09-15 11:40:00'),\n(3, 8, 'poa', 1, '\u062A\u0646\u0628\u064A\u0647', '\u062A\u0648\u0643\u064A\u0644 \u0645\u062C\u0645\u0648\u0639\u0629 \u0627\u0644\u0646\u064A\u0644 \u064A\u0646\u062A\u0647\u064A \u062E\u0644\u0627\u0644 43 \u064A\u0648\u0645\u0627\u064B', '2026-09-16 09:00:00'),\n(4, 9, 'invoice', 3, '\u062A\u062D\u0635\u064A\u0644', '\u0633\u062F\u0627\u062F \u062C\u0632\u0626\u064A 20,000 \u062C\u0646\u064A\u0647 \u0645\u0646 \u0633\u0641\u0646\u0643\u0633', '2026-08-28 14:22:00'),\n(5, 3, 'hearing', 3, '\u062A\u062D\u0636\u064A\u0631', '\u0645\u0644\u0641 \u062C\u0646\u062D\u0629 \u0627\u0644\u0634\u064A\u0643 \u062C\u0627\u0647\u0632 \u0644\u062C\u0644\u0633\u0629 \u0627\u0644\u064A\u0648\u0645', '2026-09-16 19:05:00'),\n(6, 4, 'case', 5, '\u0645\u0644\u0627\u062D\u0638\u0629', '\u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u0623\u062E\u0635\u0627\u0626\u064A \u0627\u0644\u0627\u062C\u062A\u0645\u0627\u0639\u064A \u0648\u0635\u0644 \u0644\u0644\u0645\u0643\u062A\u0628', '2026-09-14 16:30:00'),\n(7, 6, 'task', 6, '\u0628\u062F\u0621', '\u0628\u062F\u0623 \u062C\u0631\u062F \u0643\u0634\u0648\u0641 \u0627\u0644\u062A\u0623\u0645\u064A\u0646\u0627\u062A', '2026-09-12 10:15:00'),\n(8, 1, 'client', 1, '\u0627\u062C\u062A\u0645\u0627\u0639', '\u0627\u062A\u0635\u0627\u0644 \u0645\u0639 \u0627\u0644\u0639\u0636\u0648 \u0627\u0644\u0645\u0646\u062A\u062F\u0628 \u0628\u062E\u0635\u0648\u0635 \u0642\u0636\u064A\u0629 \u0627\u0644\u0623\u0645\u0648\u0627\u0644 \u0627\u0644\u0639\u0627\u0645\u0629', '2026-09-13 17:00:00'),\n(9, 5, 'hearing', 11, '\u0646\u062A\u064A\u062C\u0629', '\u062D\u064F\u062C\u0632\u062A \u062F\u0639\u0648\u0649 \u0633\u0641\u0646\u0643\u0633 \u0627\u0644\u0625\u062F\u0627\u0631\u064A\u0629 \u0644\u0644\u062D\u0643\u0645', '2026-08-12 12:10:00'),\n(10, 2, 'case', 10, '\u0625\u063A\u0644\u0627\u0642', '\u062A\u0646\u0641\u064A\u0630 \u062D\u0643\u0645 \u0627\u0644\u0637\u0631\u062F \u0648\u0627\u0633\u062A\u0644\u0627\u0645 \u0627\u0644\u0634\u0642\u0629', '2026-06-18 13:00:00');\n\nINSERT OR IGNORE INTO reminders (id, user_id, title, remind_at, case_id, is_done) VALUES\n(1, 3, '\u062C\u0644\u0633\u0629 \u062C\u0646\u062D \u0642\u0635\u0631 \u0627\u0644\u0646\u064A\u0644 \u2014 \u0623\u0635\u0644 \u0627\u0644\u0634\u064A\u0643', '2026-09-17 08:00', 3, 0),\n(2, 4, '\u0623\u0633\u0631\u0629 \u0645\u0635\u0631 \u0627\u0644\u062C\u062F\u064A\u062F\u0629 \u2014 \u063A\u062F\u0627\u064B 11:30', '2026-09-18 08:00', 5, 0),\n(3, 1, '\u062A\u062C\u062F\u064A\u062F \u062A\u0648\u0643\u064A\u0644 \u0627\u0644\u0646\u064A\u0644 \u0627\u0644\u0642\u0627\u0628\u0636\u0629', '2026-10-10 09:00', 1, 0),\n(4, 2, '\u062A\u0633\u0644\u064A\u0645 \u062A\u0639\u0642\u064A\u0628 \u0623\u0637\u0644\u0633', '2026-09-19 16:00', 1, 0),\n(5, 9, '\u0645\u062A\u0627\u0628\u0639\u0629 \u062A\u062D\u0635\u064A\u0644 \u0641\u0627\u062A\u0648\u0631\u0629 \u0633\u0641\u0646\u0643\u0633 \u0627\u0644\u0645\u062A\u0623\u062E\u0631\u0629', '2026-09-20 10:00', 9, 0);\n";
 
-// src/utils/d1-sqlite.ts
-var cachedAdapter = null;
-var PreparedStatement = class _PreparedStatement {
-  db;
+// src/db/seed.ts
+async function seedDatabase(client, force = false) {
+  try {
+    if (!force) {
+      const checkResult2 = await client.execute("SELECT COUNT(*) as count FROM case_types;");
+      const count2 = Number(checkResult2.rows[0]?.count || 0);
+      if (count2 > 0) {
+        return { seeded: false, count: count2 };
+      }
+    }
+    await client.executeMultiple(SEED_SQL);
+    const checkResult = await client.execute("SELECT COUNT(*) as count FROM case_types;");
+    const count = Number(checkResult.rows[0]?.count || 0);
+    return { seeded: true, count };
+  } catch (err) {
+    console.error("Error seeding database:", err);
+    throw err;
+  }
+}
+
+// src/db/migrations.ts
+async function runMigrations(client) {
+  try {
+    await client.executeMultiple(SCHEMA_SQL);
+    const columnsAdded = [];
+    const docColsRes = await client.execute(`PRAGMA table_info(documents);`);
+    const docCols = new Set(docColsRes.rows.map((r) => String(r.name).toLowerCase()));
+    const requiredDocCols = [
+      { name: "file_url", type: "TEXT" },
+      { name: "file_name", type: "TEXT" },
+      { name: "file_size", type: "INTEGER" },
+      { name: "mime_type", type: "TEXT" },
+      { name: "storage_key", type: "TEXT" }
+    ];
+    for (const col of requiredDocCols) {
+      if (!docCols.has(col.name)) {
+        await client.execute(`ALTER TABLE documents ADD COLUMN ${col.name} ${col.type};`);
+        columnsAdded.push(`documents.${col.name}`);
+      }
+    }
+    const poaColsRes = await client.execute(`PRAGMA table_info(powers_of_attorney);`);
+    const poaCols = new Set(poaColsRes.rows.map((r) => String(r.name).toLowerCase()));
+    const requiredPoaCols = [
+      { name: "file_url", type: "TEXT" },
+      { name: "file_name", type: "TEXT" },
+      { name: "file_size", type: "INTEGER" },
+      { name: "mime_type", type: "TEXT" },
+      { name: "storage_key", type: "TEXT" }
+    ];
+    let poaUpdated = false;
+    for (const col of requiredPoaCols) {
+      if (!poaCols.has(col.name)) {
+        await client.execute(`ALTER TABLE powers_of_attorney ADD COLUMN ${col.name} ${col.type};`);
+        columnsAdded.push(`powers_of_attorney.${col.name}`);
+        poaUpdated = true;
+      }
+    }
+    if (poaUpdated) {
+      await client.executeMultiple(`
+        DROP TRIGGER IF EXISTS trg_poas_insert;
+        DROP TRIGGER IF EXISTS trg_poas_update;
+        DROP TRIGGER IF EXISTS trg_poas_delete;
+        DROP VIEW IF EXISTS poas;
+
+        CREATE VIEW IF NOT EXISTS poas AS SELECT * FROM powers_of_attorney;
+
+        CREATE TRIGGER IF NOT EXISTS trg_poas_insert INSTEAD OF INSERT ON poas
+        BEGIN
+          INSERT INTO powers_of_attorney (id, poa_no, client_id, case_id, lawyer_id, type, notary_office, issue_date, expiry_date, status, scope, notes, file_url, file_name, file_size, mime_type, storage_key, created_at)
+          VALUES (new.id, new.poa_no, new.client_id, new.case_id, new.lawyer_id, new.type, new.notary_office, new.issue_date, new.expiry_date, new.status, new.scope, new.notes, new.file_url, new.file_name, new.file_size, new.mime_type, new.storage_key, coalesce(new.created_at, datetime('now')));
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_poas_update INSTEAD OF UPDATE ON poas
+        BEGIN
+          UPDATE powers_of_attorney SET
+            poa_no = new.poa_no,
+            client_id = new.client_id,
+            case_id = new.case_id,
+            lawyer_id = new.lawyer_id,
+            type = new.type,
+            notary_office = new.notary_office,
+            issue_date = new.issue_date,
+            expiry_date = new.expiry_date,
+            status = new.status,
+            scope = new.scope,
+            notes = new.notes,
+            file_url = new.file_url,
+            file_name = new.file_name,
+            file_size = new.file_size,
+            mime_type = new.mime_type,
+            storage_key = new.storage_key
+          WHERE id = old.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_poas_delete INSTEAD OF DELETE ON poas
+        BEGIN
+          DELETE FROM powers_of_attorney WHERE id = old.id;
+        END;
+      `);
+    }
+    const tableResult = await client.execute(
+      `SELECT name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY name;`
+    );
+    const tablesCreated = tableResult.rows.map((r) => String(r.name));
+    const indexResult = await client.execute(
+      `SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%' ORDER BY name;`
+    );
+    const indexesCreated = indexResult.rows.map((r) => String(r.name));
+    return {
+      success: true,
+      tablesCreated,
+      indexesCreated,
+      columnsAdded,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    };
+  } catch (err) {
+    console.error("Migration failed:", err);
+    throw err;
+  }
+}
+
+// src/db/adapter.ts
+var LibSqlPreparedStatement = class _LibSqlPreparedStatement {
   sql;
   binds = [];
-  constructor(db, sql) {
-    this.db = db;
+  client;
+  constructor(client, sql, binds = []) {
+    this.client = client;
     this.sql = sql;
+    this.binds = binds;
   }
   bind(...args) {
-    const stmt = new _PreparedStatement(this.db, this.sql);
-    stmt.binds = args.map((a) => a === void 0 ? null : a);
-    return stmt;
+    const sanitized = args.map((a) => a === void 0 ? null : a);
+    return new _LibSqlPreparedStatement(this.client, this.sql, sanitized);
   }
-  async first() {
-    const stmt = this.db.prepare(this.sql);
-    const row = stmt.get(...this.binds);
-    return row || null;
+  async first(colName) {
+    const res = await this.client.execute({ sql: this.sql, args: this.binds });
+    const row = res.rows[0];
+    if (!row) return null;
+    if (colName) {
+      return row[colName] ?? null;
+    }
+    return row;
   }
   async all() {
-    const stmt = this.db.prepare(this.sql);
-    const results = stmt.all(...this.binds);
-    return { results, success: true, meta: {} };
+    const res = await this.client.execute({ sql: this.sql, args: this.binds });
+    return {
+      results: res.rows || [],
+      success: true,
+      meta: {
+        changes: Number(res.rowsAffected || 0),
+        last_row_id: Number(res.lastInsertRowid !== void 0 ? res.lastInsertRowid : 0)
+      }
+    };
   }
   async run() {
-    const stmt = this.db.prepare(this.sql);
-    const res = stmt.run(...this.binds);
+    const res = await this.client.execute({ sql: this.sql, args: this.binds });
     return {
       success: true,
       meta: {
-        last_row_id: Number(res.lastInsertRowid || 0),
-        changes: Number(res.changes || 0)
+        last_row_id: Number(res.lastInsertRowid !== void 0 ? res.lastInsertRowid : 0),
+        changes: Number(res.rowsAffected || 0)
       }
     };
   }
 };
-function createSqliteD1(dbPath = ":memory:", seed = true) {
-  try {
-    const g = globalThis;
-    let DatabaseSync = null;
-    if (g.process?.getBuiltinModule) {
-      DatabaseSync = g.process.getBuiltinModule("node:sqlite")?.DatabaseSync;
-    }
-    if (!DatabaseSync) {
-      const req = g.require || (typeof __require !== "undefined" ? __require : null);
-      if (req) {
-        DatabaseSync = req("node:sqlite")?.DatabaseSync;
-      }
-    }
-    if (!DatabaseSync) return null;
-    const rawDb = new DatabaseSync(dbPath);
-    if (SCHEMA_SQL) rawDb.exec(SCHEMA_SQL);
-    if (seed && SEED_SQL) rawDb.exec(SEED_SQL);
-    return {
-      prepare(sql) {
-        return new PreparedStatement(rawDb, sql);
-      },
-      async batch(statements) {
-        return Promise.all(statements.map((s) => s.run()));
-      },
-      _raw: rawDb
-    };
-  } catch (err) {
-    console.error("Fallback SQLite creation error:", err);
-    return null;
+var LibSqlD1Adapter = class {
+  client;
+  constructor(client) {
+    this.client = client;
   }
+  prepare(sql) {
+    return new LibSqlPreparedStatement(this.client, sql);
+  }
+  async batch(statements) {
+    const stmts = statements.map((s) => ({
+      sql: s.sql,
+      args: s.binds || []
+    }));
+    const results = await this.client.batch(stmts, "write");
+    return results.map((r) => ({
+      success: true,
+      meta: {
+        last_row_id: Number(r.lastInsertRowid !== void 0 ? r.lastInsertRowid : 0),
+        changes: Number(r.rowsAffected || 0)
+      },
+      results: r.rows
+    }));
+  }
+  async exec(sql) {
+    await this.client.executeMultiple(sql);
+  }
+  async dump() {
+    throw new Error("dump is not supported in LibSQL serverless adapter");
+  }
+  withSession(token) {
+    return this;
+  }
+  get _raw() {
+    return this.client;
+  }
+};
+
+// src/db/client.ts
+import { createClient } from "@libsql/client";
+var cachedClient = null;
+var cachedAdapter = null;
+var initPromise = null;
+function getLibSqlClient(options) {
+  if (cachedClient && !options) {
+    return cachedClient;
+  }
+  const config2 = options ? { ...getDatabaseConfig(), ...options } : getDatabaseConfig();
+  const client = createClient({
+    url: config2.url,
+    authToken: config2.authToken
+  });
+  if (!options) {
+    cachedClient = client;
+  }
+  return client;
 }
-function getFallbackD1() {
-  if (cachedAdapter) return cachedAdapter;
-  const dbPath = globalThis.process?.env?.SQLITE_PATH || ":memory:";
-  cachedAdapter = createSqliteD1(dbPath, true);
-  return cachedAdapter;
+async function ensureDatabaseInitialized(client) {
+  const targetClient = client || getLibSqlClient();
+  if (!initPromise) {
+    initPromise = (async () => {
+      try {
+        const check = await targetClient.execute(
+          `SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name='clients';`
+        );
+        const exists = Number(check.rows[0]?.count || 0) > 0;
+        if (!exists) {
+          await runMigrations(targetClient);
+          await seedDatabase(targetClient);
+        }
+      } catch (err) {
+        initPromise = null;
+        throw err;
+      }
+    })();
+  }
+  await initPromise;
+}
+function getD1Database(options) {
+  if (cachedAdapter && !options) {
+    return cachedAdapter;
+  }
+  const client = getLibSqlClient(options);
+  const adapter = new LibSqlD1Adapter(client);
+  if (!options) {
+    cachedAdapter = adapter;
+  }
+  return adapter;
 }
 
 // src/app.ts
 var app = new Hono2();
 app.use("*", async (c, next) => {
   if (!c.env?.DB) {
-    const fallback = getFallbackD1();
-    if (fallback) {
-      c.env = { ...c.env, DB: fallback };
-    }
+    await ensureDatabaseInitialized();
+    const db = getD1Database();
+    c.env = { ...c.env, DB: db };
   }
   await next();
 });
@@ -5284,12 +6310,12 @@ app.use("/static/*", async (c, next) => {
     return module({ root: "./public" })(c, next);
   }
   try {
-    const fs = await import("node:fs");
-    const path = await import("node:path");
+    const fs4 = await import("node:fs");
+    const path4 = await import("node:path");
     const rel = c.req.path.replace(/^\/static\//, "");
-    const file = path.resolve(process.cwd(), "public", "static", rel);
-    if (fs.existsSync(file) && fs.statSync(file).isFile()) {
-      const ext = path.extname(file).toLowerCase();
+    const file = path4.resolve(process.cwd(), "public", "static", rel);
+    if (fs4.existsSync(file) && fs4.statSync(file).isFile()) {
+      const ext = path4.extname(file).toLowerCase();
       const mimes = {
         ".css": "text/css; charset=utf-8",
         ".js": "application/javascript; charset=utf-8",
@@ -5300,7 +6326,7 @@ app.use("/static/*", async (c, next) => {
         ".svg": "image/svg+xml",
         ".ico": "image/x-icon"
       };
-      const data = fs.readFileSync(file);
+      const data = fs4.readFileSync(file);
       return new Response(data, {
         headers: { "Content-Type": mimes[ext] || "application/octet-stream" }
       });

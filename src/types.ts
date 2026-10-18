@@ -143,6 +143,11 @@ export interface DocumentRecord {
   pages: number | null
   notes: string | null
   uploaded_by: number | null
+  file_url?: string | null
+  file_name?: string | null
+  file_size?: number | null
+  mime_type?: string | null
+  storage_key?: string | null
   created_at?: string
 }
 
@@ -159,6 +164,11 @@ export interface PowerOfAttorney {
   status: string
   scope: string | null
   notes: string | null
+  file_url?: string | null
+  file_name?: string | null
+  file_size?: number | null
+  mime_type?: string | null
+  storage_key?: string | null
   created_at?: string
 }
 

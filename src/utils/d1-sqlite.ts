@@ -1,8 +1,10 @@
 /**
- * Fallback SQLite Database Adapter
- * Implements Cloudflare D1 interface on Node.js / Vercel using built-in node:sqlite
+ * SQLite Database Adapter & D1 Compatibility Provider
+ * Delegates persistent operations to modern LibSQL engine (@libsql/client)
+ * while maintaining backward-compatible DatabaseSync fallback for tests.
  */
 import { SCHEMA_SQL, SEED_SQL } from './embedded-data'
+import { getD1Database } from '../db/client'
 
 declare const require: any
 
@@ -24,9 +26,13 @@ class PreparedStatement {
     return stmt
   }
 
-  async first<T = any>(): Promise<T | null> {
+  async first<T = any>(colName?: string): Promise<T | null> {
     const stmt = this.db.prepare(this.sql)
-    const row = stmt.get(...this.binds)
+    const row = stmt.get(...this.binds) as any
+    if (!row) return null
+    if (colName) {
+      return (row[colName] as T) ?? null
+    }
     return (row as T) || null
   }
 
@@ -49,6 +55,9 @@ class PreparedStatement {
   }
 }
 
+/**
+ * Creates an in-memory SQLite D1 instance for fast isolated unit testing.
+ */
 export function createSqliteD1(dbPath: string = ':memory:', seed: boolean = true): any {
   try {
     const g = globalThis as any
@@ -85,9 +94,12 @@ export function createSqliteD1(dbPath: string = ':memory:', seed: boolean = true
   }
 }
 
+/**
+ * Returns the primary persistent database adapter.
+ * Uses LibSQL / Turso singleton to prevent cold-start data wipeout on Vercel.
+ */
 export function getFallbackD1(): any {
   if (cachedAdapter) return cachedAdapter
-  const dbPath = (globalThis as any).process?.env?.SQLITE_PATH || ':memory:'
-  cachedAdapter = createSqliteD1(dbPath, true)
+  cachedAdapter = getD1Database()
   return cachedAdapter
 }

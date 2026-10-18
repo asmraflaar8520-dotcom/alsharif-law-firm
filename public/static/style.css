@@ -394,3 +394,19 @@ body {
     color: #E0C36A !important;
   }
 }
+
+/* ───────────── File Uploader & Document Viewer ───────────── */
+.file-uploader-box {
+  background: rgba(246, 241, 231, 0.45);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.file-uploader-box:hover {
+  background: rgba(201, 162, 39, 0.06);
+  border-color: var(--gold) !important;
+}
+.file-uploader-box.drag-over {
+  background: rgba(201, 162, 39, 0.12) !important;
+  border-color: var(--gold) !important;
+  transform: scale(1.01);
+}
+

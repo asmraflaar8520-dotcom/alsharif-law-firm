@@ -11,17 +11,16 @@ import { taskRoutes } from './routes/tasks'
 import { documentRoutes } from './routes/documents'
 import { financeRoutes } from './routes/finance'
 import { renderAppLayout } from './views/layout'
-import { getFallbackD1 } from './utils/d1-sqlite'
+import { getD1Database, ensureDatabaseInitialized } from './db'
 
 export const app = new Hono<AppContext>()
 
-// Auto-fallback database binding for Vercel / Node.js environments
+// Persistent database binding for Vercel Serverless / Node.js environments
 app.use('*', async (c, next) => {
   if (!c.env?.DB) {
-    const fallback = getFallbackD1()
-    if (fallback) {
-      c.env = { ...c.env, DB: fallback }
-    }
+    await ensureDatabaseInitialized()
+    const db = getD1Database()
+    c.env = { ...c.env, DB: db as unknown as D1Database }
   }
   await next()
 })

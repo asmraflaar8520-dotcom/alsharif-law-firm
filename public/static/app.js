@@ -510,10 +510,26 @@ function caseTab(c, tab) {
   if (tab === 'docs') {
     return `<div class="flex justify-end mb-3"><button id="add-doc" class="btn-gold text-sm">إضافة مستند</button></div>
       <div class="grid md:grid-cols-2 gap-3">${c.documents.map((d) => `
-        <article class="paper-card rounded-xl p-4">
-          <div class="text-xs text-gold-700">${esc(d.doc_type)}</div>
-          <div class="font-semibold">${esc(d.title)}</div>
-          <div class="text-xs text-navy-700/50 mt-1">${esc(d.ref_no || '')} · ${arDate(d.date_issued)} · ${d.pages || '—'} صفحات</div>
+        <article class="paper-card rounded-xl p-4 flex flex-col justify-between">
+          <div>
+            <div class="flex justify-between items-center">
+              <span class="text-xs text-gold-700 font-semibold">${esc(d.doc_type)}</span>
+              ${d.file_url ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200"><i class="fas fa-paperclip ml-1"></i>مرفق</span>` : ''}
+            </div>
+            <div class="font-semibold text-navy-950 mt-1">${esc(d.title)}</div>
+            <div class="text-xs text-navy-700/50 mt-1">${esc(d.ref_no || '')} · ${arDate(d.date_issued)} · ${d.pages || '—'} صفحات</div>
+            ${d.file_name ? `<div class="text-xs text-navy-700/60 mt-1 truncate"><i class="fas fa-file text-gold-600"></i> ${esc(d.file_name)} ${d.file_size ? `(${formatDocSize(d.file_size)})` : ''}</div>` : ''}
+          </div>
+          <div class="mt-3 pt-2 border-t gold-hairline flex items-center justify-between gap-2">
+            ${d.file_url ? `
+              <button type="button" class="btn-ghost text-xs py-1 px-2.5 flex items-center gap-1 text-navy-900" data-preview-url="${esc(d.file_url)}" data-preview-title="${esc(d.title)}" data-preview-mime="${esc(d.mime_type || '')}">
+                <i class="fas fa-eye text-gold-600"></i> معاينة المستند
+              </button>
+              <a href="${esc(d.file_url)}?download=1" download class="btn-gold text-xs py-1 px-2.5 flex items-center gap-1">
+                <i class="fas fa-download"></i> تحميل
+              </a>
+            ` : `<span class="text-xs text-navy-700/40">لا يوجد ملف مرفق</span>`}
+          </div>
         </article>`).join('') || empty('fa-folder-open', 'لا مستندات', '')}</div>`;
   }
   if (tab === 'notes') {
@@ -684,11 +700,37 @@ async function viewPoas() {
     <div class="paper-card rounded-xl overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
-          <thead class="bg-navy-900 text-ivory/80 text-xs"><tr><th class="text-right p-3">الرقم</th><th class="text-right">الموكل</th><th class="text-right">النوع</th><th class="text-right">التوثيق</th><th class="text-right">الانتهاء</th><th></th></tr></thead>
+          <thead class="bg-navy-900 text-ivory/80 text-xs">
+            <tr>
+              <th class="text-right p-3">الرقم</th>
+              <th class="text-right">الموكل</th>
+              <th class="text-right">النوع</th>
+              <th class="text-right">التوثيق</th>
+              <th class="text-right">الانتهاء</th>
+              <th class="text-right">الحالة</th>
+              <th class="text-center p-3">الملف والإجراءات</th>
+            </tr>
+          </thead>
           <tbody>${list.map((p) => `<tr class="border-t gold-hairline ledger-row">
-            <td class="p-3 font-semibold whitespace-nowrap">${esc(p.poa_no)}</td><td>${esc(p.client_name)}</td><td>${esc(p.type)}</td>
-            <td>${esc(p.notary_office || '')}</td><td class="whitespace-nowrap">${arDate(p.expiry_date)}</td><td class="p-3">${chip(p.status)}</td>
-          </tr>`).join('')}</tbody>
+            <td class="p-3 font-semibold whitespace-nowrap">${esc(p.poa_no)}</td>
+            <td>${esc(p.client_name)}</td>
+            <td>${esc(p.type)}</td>
+            <td>${esc(p.notary_office || '—')}</td>
+            <td class="whitespace-nowrap">${arDate(p.expiry_date)}</td>
+            <td class="p-3">${chip(p.status)}</td>
+            <td class="p-3 text-center whitespace-nowrap">
+              ${p.file_url ? `
+                <div class="inline-flex items-center gap-1">
+                  <button type="button" class="btn-ghost text-xs py-1 px-2.5" data-preview-url="${esc(p.file_url)}" data-preview-title="توكيل رقم ${esc(p.poa_no)}" data-preview-mime="${esc(p.mime_type || '')}" title="معاينة المستند">
+                    <i class="fas fa-eye text-gold-600"></i> معاينة
+                  </button>
+                  <a href="${esc(p.file_url)}?download=1" download class="btn-ghost text-xs py-1 px-2.5 hover:text-gold-700" title="تحميل">
+                    <i class="fas fa-download"></i> تحميل
+                  </a>
+                </div>
+              ` : `<span class="text-xs text-navy-700/40">بدون مرفق</span>`}
+            </td>
+          </tr>`).join('') || '<tr><td colspan="7" class="p-6 text-center text-navy-700/50">لا توجد توكيلات مسجلة بعد</td></tr>'}</tbody>
         </table>
       </div>
     </div>`;
@@ -698,11 +740,29 @@ async function viewDocuments() {
   const list = await api('/api/documents');
   return `${pageHead('أرشيف المستندات', 'صحف، مذكرات، أحكام، عقود.', `<button id="add-doc" class="btn-gold">قيد مستند</button>`)}
     <div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">${list.map((d) => `
-      <article class="paper-card rounded-xl p-4">
-        <div class="text-xs text-gold-700 font-semibold">${esc(d.doc_type)}</div>
-        <div class="font-semibold mt-1">${esc(d.title)}</div>
-        <div class="text-xs text-navy-700/50 mt-1">${d.case_no ? caseRef(d) + ' · ' : ''}${esc(d.client_name || '')}</div>
-      </article>`).join('')}</div>`;
+      <article class="paper-card rounded-xl p-4 flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-gold-700 font-semibold">${esc(d.doc_type)}</span>
+            ${d.file_url ? `<span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium"><i class="fas fa-paperclip ml-1"></i>مرفق ملف</span>` : `<span class="text-[11px] text-navy-700/40">بدون ملف</span>`}
+          </div>
+          <div class="font-semibold mt-1 text-navy-950">${esc(d.title)}</div>
+          <div class="text-xs text-navy-700/60 mt-1">${d.case_no ? caseRef(d) + ' · ' : ''}${esc(d.client_name || '')}</div>
+          ${d.file_name ? `<div class="text-xs text-navy-700/50 mt-2 truncate flex items-center gap-1"><i class="fas fa-file text-gold-600"></i> ${esc(d.file_name)} ${d.file_size ? `(${formatDocSize(d.file_size)})` : ''}</div>` : ''}
+        </div>
+        <div class="mt-4 pt-3 border-t gold-hairline flex items-center justify-between gap-2">
+          ${d.file_url ? `
+            <button type="button" class="btn-ghost text-xs py-1.5 px-3 flex items-center gap-1.5 text-navy-900" data-preview-url="${esc(d.file_url)}" data-preview-title="${esc(d.title)}" data-preview-mime="${esc(d.mime_type || '')}">
+              <i class="fas fa-eye text-gold-600"></i> معاينة المستند
+            </button>
+            <a href="${esc(d.file_url)}?download=1" download class="btn-gold text-xs py-1.5 px-3 flex items-center gap-1.5" title="تحميل">
+              <i class="fas fa-download"></i> تحميل
+            </a>
+          ` : `
+            <span class="text-xs text-navy-700/40">لا يوجد ملف مرفق</span>
+          `}
+        </div>
+      </article>`).join('') || empty('fa-folder-open', 'لا توجد مستندات بعد', '')}</div>`;
 }
 
 async function viewTime() {
@@ -907,6 +967,250 @@ function modal(title, body, footer = '') {
   document.addEventListener('keydown', _currentEscHandler);
 }
 
+function formatDocSize(bytes) {
+  if (!bytes || bytes <= 0) return '';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function previewModal(url, title, mimeType = '') {
+  closeModal();
+  const isPdf = (mimeType || '').includes('pdf') || url.toLowerCase().includes('.pdf');
+  const isImage = (mimeType || '').includes('image') || /\.(jpg|jpeg|png)$/i.test(url);
+
+  let viewerHtml = '';
+  if (isPdf) {
+    viewerHtml = `<div class="relative w-full h-[70vh] bg-navy-950/5 rounded-xl overflow-hidden border gold-hairline">
+      <iframe src="${url}" class="w-full h-full border-0" title="${esc(title)}"></iframe>
+    </div>`;
+  } else if (isImage) {
+    viewerHtml = `<div class="flex justify-center items-center max-h-[70vh] bg-navy-950/5 rounded-xl p-4 overflow-auto border gold-hairline">
+      <img src="${url}" alt="${esc(title)}" class="max-h-[65vh] max-w-full rounded shadow object-contain" />
+    </div>`;
+  } else {
+    viewerHtml = `<div class="p-8 text-center bg-navy-950/5 rounded-xl border gold-hairline">
+      <i class="fa fa-file text-4xl text-navy-700/40 mb-3"></i>
+      <p class="text-sm text-navy-700 mb-4">لا تتوفر معاينة مباشرة لهذا النوع من الملفات</p>
+      <a href="${url}?download=1" download class="btn-gold inline-flex items-center gap-2"><i class="fa fa-download"></i> تحميل الملف</a>
+    </div>`;
+  }
+
+  $('#modal-root').innerHTML = `
+    <div class="modal-backdrop fixed inset-0 z-50 flex items-start justify-center p-2 md:p-4 overflow-y-auto" id="modal-bg">
+      <div class="paper-card rounded-2xl w-full max-w-4xl my-4 md:my-8 p-5 md:p-6 fade-in shadow-2xl">
+        <div class="flex justify-between items-center mb-4">
+          <div class="flex items-center gap-2 truncate">
+            <i class="fa ${isPdf ? 'fa-file-pdf text-red-600' : isImage ? 'fa-file-image text-emerald-600' : 'fa-file text-navy-700'} text-xl"></i>
+            <h3 class="font-amiri text-xl md:text-2xl text-navy-950 truncate">${esc(title)}</h3>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <a href="${url}" target="_blank" class="btn-ghost text-xs inline-flex items-center gap-1.5" title="فتح بنافذة جديدة"><i class="fas fa-external-link"></i> نافذة مستقلة</a>
+            <a href="${url}?download=1" download class="btn-gold text-xs inline-flex items-center gap-1.5" title="تحميل"><i class="fas fa-download"></i> تحميل</a>
+            <button id="modal-x" class="text-navy-700/60 hover:text-navy-950 p-2 rounded-full" aria-label="إغلاق"><i class="fas fa-xmark text-lg"></i></button>
+          </div>
+        </div>
+        ${viewerHtml}
+      </div>
+    </div>`;
+  $('#modal-x').onclick = closeModal;
+  $('#modal-bg').addEventListener('click', (e) => { if (e.target.id === 'modal-bg') closeModal(); });
+  _currentEscHandler = (e) => {
+    if (e.key === 'Escape') closeModal();
+  };
+  document.addEventListener('keydown', _currentEscHandler);
+}
+
+function fileUploaderComponent(folder = 'documents') {
+  return `
+    <div class="file-uploader-box mt-3 mb-4 p-4 border-2 border-dashed border-gold-500/40 hover:border-gold-500 rounded-xl transition cursor-pointer text-center" id="drop-zone">
+      <input type="file" id="file-input" class="hidden" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" />
+      <div id="drop-prompt">
+        <div class="w-12 h-12 mx-auto rounded-full bg-gold-500/10 text-gold-700 flex items-center justify-center mb-2">
+          <i class="fas fa-cloud-arrow-up text-xl"></i>
+        </div>
+        <p class="text-sm font-semibold text-navy-950">اسحب الملف وأفلته هنا، أو <span class="text-gold-700 underline">تصفح من جهازك</span></p>
+        <p class="text-xs text-navy-700/60 mt-1">يدعم ملفات PDF والصور (JPG, PNG) حتى 15 ميجابايت</p>
+      </div>
+      <div id="upload-progress-container" class="hidden text-right">
+        <div class="flex justify-between items-center text-xs mb-1">
+          <span id="uploading-file-name" class="font-semibold text-navy-950 truncate max-w-[70%]"></span>
+          <span id="upload-percent" class="font-mono text-gold-700">0%</span>
+        </div>
+        <div class="w-full bg-navy-900/10 rounded-full h-2 overflow-hidden">
+          <div id="upload-progress-bar" class="bg-gold-500 h-2 rounded-full transition-all duration-150" style="width: 0%"></div>
+        </div>
+      </div>
+      <div id="upload-success" class="hidden text-right bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2 text-emerald-800 text-xs md:text-sm font-semibold truncate">
+            <i class="fas fa-circle-check text-emerald-600 text-base"></i>
+            <span id="uploaded-file-label" class="truncate"></span>
+            <span id="uploaded-file-size" class="text-xs font-mono text-emerald-600 shrink-0"></span>
+          </div>
+          <button type="button" id="remove-file-btn" class="text-xs text-red-600 hover:text-red-800 hover:underline shrink-0 mr-2">إزالة</button>
+        </div>
+      </div>
+      <div id="upload-error" class="hidden text-right bg-rose-50 border border-rose-200 rounded-lg p-3 text-xs text-rose-700 font-semibold mt-2">
+        <i class="fas fa-circle-exclamation text-rose-600 ml-1"></i> <span id="upload-error-msg"></span>
+      </div>
+    </div>
+    <input type="hidden" name="file_url" id="f-file-url" />
+    <input type="hidden" name="file_name" id="f-file-name" />
+    <input type="hidden" name="file_size" id="f-file-size" />
+    <input type="hidden" name="mime_type" id="f-mime-type" />
+    <input type="hidden" name="storage_key" id="f-storage-key" />
+  `;
+}
+
+function bindFileUploader(folder = 'documents') {
+  const dropZone = $('#drop-zone');
+  const fileInput = $('#file-input');
+  const promptEl = $('#drop-prompt');
+  const progressBox = $('#upload-progress-container');
+  const progressBar = $('#upload-progress-bar');
+  const percentEl = $('#upload-percent');
+  const successBox = $('#upload-success');
+  const errorBox = $('#upload-error');
+  const errorMsg = $('#upload-error-msg');
+  const fileLabel = $('#uploaded-file-label');
+  const fileSizeEl = $('#uploaded-file-size');
+  const removeBtn = $('#remove-file-btn');
+
+  if (!dropZone || !fileInput) return;
+
+  dropZone.addEventListener('click', (e) => {
+    if (e.target.closest('#remove-file-btn') || e.target.closest('#upload-success')) return;
+    fileInput.click();
+  });
+
+  ['dragenter', 'dragover'].forEach((evt) => {
+    dropZone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropZone.classList.add('drag-over');
+    });
+  });
+
+  ['dragleave', 'drop'].forEach((evt) => {
+    dropZone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropZone.classList.remove('drag-over');
+    });
+  });
+
+  dropZone.addEventListener('drop', (e) => {
+    const dt = e.dataTransfer;
+    const files = dt?.files;
+    if (files && files.length > 0) {
+      handleFileUpload(files[0]);
+    }
+  });
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files && fileInput.files.length > 0) {
+      handleFileUpload(fileInput.files[0]);
+    }
+  });
+
+  removeBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    fileInput.value = '';
+    $('#f-file-url').value = '';
+    $('#f-file-name').value = '';
+    $('#f-file-size').value = '';
+    $('#f-mime-type').value = '';
+    $('#f-storage-key').value = '';
+    successBox.classList.add('hidden');
+    progressBox.classList.add('hidden');
+    errorBox.classList.add('hidden');
+    promptEl.classList.remove('hidden');
+  });
+
+  function handleFileUpload(file) {
+    errorBox.classList.add('hidden');
+
+    const maxBytes = 15 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      errorMsg.textContent = 'حجم الملف يتجاوز الحد الأقصى المسموح به (15 ميجابايت)';
+      errorBox.classList.remove('hidden');
+      return;
+    }
+
+    const ext = file.name.split('.').pop().toLowerCase();
+    const allowedExts = ['pdf', 'jpg', 'jpeg', 'png'];
+    if (!allowedExts.includes(ext)) {
+      errorMsg.textContent = 'نوع الملف غير مدعوم. الصيغ المسموحة: PDF, JPG, PNG';
+      errorBox.classList.remove('hidden');
+      return;
+    }
+
+    promptEl.classList.add('hidden');
+    progressBox.classList.remove('hidden');
+    successBox.classList.add('hidden');
+    $('#uploading-file-name').textContent = file.name;
+    progressBar.style.width = '0%';
+    percentEl.textContent = '0%';
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('folder', folder);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload', true);
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 100);
+        progressBar.style.width = pct + '%';
+        percentEl.textContent = pct + '%';
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const res = JSON.parse(xhr.responseText);
+          $('#f-file-url').value = res.file_url || '';
+          $('#f-file-name').value = res.file_name || file.name;
+          $('#f-file-size').value = res.file_size || file.size;
+          $('#f-mime-type').value = res.mime_type || file.type;
+          $('#f-storage-key').value = res.storage_key || '';
+
+          progressBox.classList.add('hidden');
+          fileLabel.textContent = res.file_name || file.name;
+          fileSizeEl.textContent = `(${formatDocSize(res.file_size || file.size)})`;
+          successBox.classList.remove('hidden');
+        } catch (err) {
+          showUploadError('فشل قراءة رد الخادم');
+        }
+      } else {
+        try {
+          const res = JSON.parse(xhr.responseText);
+          showUploadError(res.error || 'فشل رفع الملف');
+        } catch {
+          showUploadError(`خطأ في رفع الملف (${xhr.status})`);
+        }
+      }
+    };
+
+    xhr.onerror = () => {
+      showUploadError('تعذر الاتصال بالخادم لرفع الملف');
+    };
+
+    xhr.send(formData);
+  }
+
+  function showUploadError(msg) {
+    progressBox.classList.add('hidden');
+    promptEl.classList.remove('hidden');
+    errorMsg.textContent = msg;
+    errorBox.classList.remove('hidden');
+  }
+}
+
 function field(label, name, type = 'text', val = '', extra = '') {
   if (type === 'textarea') return `<label class="block mb-3 text-xs md:text-sm font-semibold">${label}<textarea name="${name}" class="input-lux mt-1" rows="3">${esc(val)}</textarea></label>`;
   if (type === 'select') return `<label class="block mb-3 text-xs md:text-sm font-semibold">${label}<select name="${name}" class="input-lux mt-1">${extra}</select></label>`;
@@ -1108,8 +1412,13 @@ function poaForm(preset = {}) {
     ${field('تاريخ الإصدار', 'issue_date', 'date', preset.issue_date || todayISO())}
     ${field('تاريخ الانتهاء', 'expiry_date', 'date', preset.expiry_date || '')}
     <div class="md:col-span-2">${field('النطاق', 'scope', 'textarea', preset.scope || 'الحضور والمرافعة أمام جميع المحاكم')}</div>
+    <div class="md:col-span-2">
+      <div class="mt-2 font-semibold text-xs md:text-sm text-navy-950">صورة التوكيل الممسوح ضوئياً (PDF / صور)</div>
+      ${fileUploaderComponent('poas')}
+    </div>
   </form>`, `<button class="btn-ghost" id="modal-x2">إلغاء</button><button class="btn-gold" id="msave">حفظ</button>`);
   $('#modal-x2').onclick = closeModal;
+  bindFileUploader('poas');
   $('#msave').onclick = async () => {
     const b = formTo($('#mform'));
     if (!b.poa_no?.trim() || !b.client_id) {
@@ -1139,8 +1448,11 @@ function docForm(preset = {}) {
     ${field('الرقم المرجعي', 'ref_no', 'text', preset.ref_no || '')}
     ${field('تاريخ المستند', 'date_issued', 'date', preset.date_issued || todayISO())}
     ${field('عدد الصفحات', 'pages', 'number', preset.pages || '')}
+    <div class="mt-2 font-semibold text-xs md:text-sm text-navy-950">الملف المرفق (PDF / صور)</div>
+    ${fileUploaderComponent('documents')}
   </form>`, `<button class="btn-ghost" id="modal-x2">إلغاء</button><button class="btn-gold" id="msave">حفظ</button>`);
   $('#modal-x2').onclick = closeModal;
+  bindFileUploader('documents');
   $('#msave').onclick = async () => {
     const b = formTo($('#mform'));
     if (!b.title?.trim()) {
@@ -1587,8 +1899,23 @@ function bindView() {
       }
     });
     $('#add-doc')?.addEventListener('click', async () => { await ensureCasesMini(); docForm(); });
+    $$('#case-tab [data-preview-url]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        previewModal(btn.dataset.previewUrl, btn.dataset.previewTitle, btn.dataset.previewMime);
+      });
+    });
   }
   bindTabSubEvents();
+
+  $$('[data-preview-url]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      previewModal(btn.dataset.previewUrl, btn.dataset.previewTitle, btn.dataset.previewMime);
+    });
+  });
 
   $$('[data-start]').forEach((b) => b.addEventListener('click', async () => {
     const id = b.dataset.start;

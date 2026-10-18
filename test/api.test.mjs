@@ -493,6 +493,80 @@ test('Law Office Web Application Integration & Security Test Suite', async (t) =
     assert.equal(putRes.status, 200)
   })
 
+  // 8.5. Phase 2: Object Storage & File Upload Pipeline
+  await t.test('Storage: POST /api/upload rejects disallowed MIME types', async () => {
+    const res = await fetch(`${BASE_URL}/api/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: authCookie },
+      body: JSON.stringify({
+        base64: Buffer.from('binary-exe-content').toString('base64'),
+        filename: 'malware.exe',
+        mime_type: 'application/x-msdownload',
+      }),
+    })
+    assert.equal(res.status, 400)
+    const err = await res.json()
+    assert.ok(err.error)
+  })
+
+  let uploadedFileResult = null
+  await t.test('Storage: POST /api/upload accepts valid PDF and returns metadata', async () => {
+    const samplePdf = '%PDF-1.5\n%Antigravity Pleading Test\n%%EOF'
+    const res = await fetch(`${BASE_URL}/api/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: authCookie },
+      body: JSON.stringify({
+        base64: Buffer.from(samplePdf).toString('base64'),
+        filename: 'appeal_pleading.pdf',
+        mime_type: 'application/pdf',
+        folder: 'documents',
+      }),
+    })
+    assert.equal(res.status, 201)
+    uploadedFileResult = await res.json()
+    assert.ok(uploadedFileResult.storage_key)
+    assert.ok(uploadedFileResult.file_url)
+    assert.equal(uploadedFileResult.file_name, 'appeal_pleading.pdf')
+    assert.equal(uploadedFileResult.mime_type, 'application/pdf')
+  })
+
+  await t.test('Storage: GET /api/files/:folder/:filename streams stored file', async () => {
+    const fileRes = await fetch(`${BASE_URL}${uploadedFileResult.file_url}`, {
+      headers: { Cookie: authCookie },
+    })
+    assert.equal(fileRes.status, 200)
+    assert.equal(fileRes.headers.get('content-type'), 'application/pdf')
+    const text = await fileRes.text()
+    assert.ok(text.includes('%Antigravity Pleading Test'))
+  })
+
+  await t.test('Documents: Persist file metadata with new document record', async () => {
+    const docRes = await fetch(`${BASE_URL}/api/documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: authCookie },
+      body: JSON.stringify({
+        title: 'صحيفة دعوى مرفقة بملف',
+        doc_type: 'صحيفة',
+        file_url: uploadedFileResult.file_url,
+        file_name: uploadedFileResult.file_name,
+        file_size: uploadedFileResult.file_size,
+        mime_type: uploadedFileResult.mime_type,
+        storage_key: uploadedFileResult.storage_key,
+      }),
+    })
+    assert.equal(docRes.status, 200)
+    const docData = await docRes.json()
+    assert.ok(docData.id)
+
+    const getDocRes = await fetch(`${BASE_URL}/api/documents/${docData.id}`, {
+      headers: { Cookie: authCookie },
+    })
+    assert.equal(getDocRes.status, 200)
+    const doc = await getDocRes.json()
+    assert.equal(doc.file_url, uploadedFileResult.file_url)
+    assert.equal(doc.storage_key, uploadedFileResult.storage_key)
+  })
+
   // 9. Session Termination
   await t.test('Auth: Logout cleanly terminates session', async () => {
     const res = await fetch(`${BASE_URL}/api/logout`, {
