@@ -28,16 +28,19 @@ export const DashboardView = {
 
     const radarItems = [...(radar.urgent || []), ...(radar.warning || [])];
 
+    const hour = new Date().getHours();
+    const greeting = (hour >= 4 && hour < 12) ? 'صباح الخير' : (hour >= 12 && hour < 17) ? 'أهلاً بك' : 'مساء الخير';
+
     return `
-      ${pageHead('لوحة المكتب', `صباح الخير، ${esc(d.me.name.split(' ').slice(0, 3).join(' '))} — حركة المكتب ومواعيد الطعون القانونية اليوم.`)}
+      ${pageHead('لوحة المكتب', `${greeting}، ${esc(d.me.name.split(' ').slice(0, 3).join(' '))} — المتابعة العامة وحركة قضايا وأعمال المكتب.`)}
       
-      <!-- Executive Deadlines Radar Widget -->
+      <!-- Executive Deadlines Widget (Appears strictly when there are pending alerts) -->
       ${radarItems.length > 0 ? `
         <section class="widget-deadlines">
           <div class="widget-deadlines__header">
             <div class="widget-deadlines__title">
               <span class="widget-deadlines__beacon"></span>
-              <i class="fas fa-radar text-red-600 ml-1"></i> رادار مواعيد الطعون القانونية (قانون المرافعات والإجراءات)
+              <i class="fas fa-scale-balanced text-red-600 ml-1"></i> مواعيد الاستئناف والنقض الإجرائية (قانون المرافعات)
               <span class="text-xs px-2.5 py-0.5 rounded-full bg-red-100 text-red-800 font-bold border border-red-200">
                 ${radarItems.length} مواعيد وشيكة
               </span>
@@ -76,8 +79,8 @@ export const DashboardView = {
                     <button type="button" class="btn-ghost text-xs py-1 px-2.5" data-go="case" data-id="${item.case_id}">
                       الملف
                     </button>
-                    <button type="button" class="widget-deadlines__action" data-mark-filed="${item.id}" title="تسجيل قيد الطعن بقلم كتاب المحكمة">
-                      <i class="fas fa-check ml-1"></i> قُيّد الطعن
+                    <button type="button" class="widget-deadlines__action" data-mark-filed="${item.id}" title="تسجيل قيد الاستئناف/الطعن بقلم كتاب المحكمة">
+                      <i class="fas fa-check ml-1"></i> تم القيد
                     </button>
                   </div>
                 </div>
@@ -85,17 +88,7 @@ export const DashboardView = {
             }).join('')}
           </div>
         </section>
-      ` : `
-        <div class="paper-card rounded-xl border border-emerald-200 bg-emerald-50/40 p-3.5 mb-6 flex items-center justify-between text-xs text-emerald-900">
-          <div class="flex items-center gap-2">
-            <i class="fas fa-shield-halved text-emerald-600 text-base"></i>
-            <span><b>رادار الطعون في النطاق الآمن:</b> لا توجد مواعيد استئناف أو نقض حرجة مستحقة خلال الأيام السبعة القادمة.</span>
-          </div>
-          <span class="font-bold text-[11px] bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full border border-emerald-300">
-            ${radar.total_pending} ميعاد مسجل سارٍ
-          </span>
-        </div>
-      `}
+      ` : ''}
 
       <!-- Executive KPIs Grid -->
       <section class="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-3 mb-6 md:mb-8">
